@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mc-control-backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend.config:/app/backend.config:ro
+      - ./frontend:/app/frontend:ro
+    restart: unless-stopped
+    environment:
+      - RUST_LOG=info
