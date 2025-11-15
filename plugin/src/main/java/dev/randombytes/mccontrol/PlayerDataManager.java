@@ -241,7 +241,9 @@ public class PlayerDataManager {
         result.addProperty("name", Bukkit.getServer().getName());
         result.addProperty("version", Bukkit.getVersion());
         result.addProperty("bukkitVersion", Bukkit.getBukkitVersion());
-        result.addProperty("minecraftVersion", Bukkit.getMinecraftVersion());
+        // Extract Minecraft version from Bukkit version (format: "1.21.1-R0.1-SNAPSHOT")
+        String minecraftVersion = Bukkit.getBukkitVersion().split("-")[0];
+        result.addProperty("minecraftVersion", minecraftVersion);
         result.addProperty("onlineMode", Bukkit.getOnlineMode());
         result.addProperty("maxPlayers", Bukkit.getMaxPlayers());
         result.addProperty("currentPlayers", Bukkit.getOnlinePlayers().size());
@@ -305,7 +307,7 @@ public class PlayerDataManager {
             this.uuid = player.getUniqueId();
             this.name = player.getName();
             this.isOnline = player.isOnline();
-            this.lastSeen = player.getLastSeen();
+            this.lastSeen = player.getLastPlayed();
             this.playTime = player.getStatistic(Statistic.PLAY_ONE_MINUTE) / 20; // Convert ticks to seconds
             this.isBanned = player.isBanned();
             this.sessionStart = System.currentTimeMillis();
