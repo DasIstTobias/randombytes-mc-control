@@ -1,21 +1,11 @@
-# Rust build artifacts
+# Exclude everything by default
+*
+
+# Include what we need
+!Cargo.toml
+!Cargo.lock
+!src/
+!src/**
+
+# Explicitly exclude target if it exists
 target/
-
-# Configuration files (will be mounted as volumes)
-backend.config
-
-# Git
-.git/
-.gitignore
-
-# Documentation
-*.md
-README.md
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-Thumbs.db
