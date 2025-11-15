@@ -1,0 +1,14 @@
+# RandomBytes MC Control Backend Configuration
+
+# Minecraft plugin connection settings
+# This should point to your Minecraft server
+plugin_host=localhost
+plugin_port=25575
+
+# API Key from the plugin's API-KEY.txt file
+# Replace this with your actual API key
+api_key=your-api-key-here
+
+# Backend web server port
+# This is where you'll access the frontend
+backend_port=8080

@@ -1,0 +1,11 @@
+# Exclude everything by default
+*
+
+# Include what we need
+!Cargo.toml
+!Cargo.lock
+!src/
+!src/**
+
+# Explicitly exclude target if it exists
+target/
