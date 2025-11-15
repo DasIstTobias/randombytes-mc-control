@@ -49,9 +49,6 @@ API-KEY.txt
 Thumbs.db
 .directory
 
-# Docker
-.dockerignore
-
 # Logs
 *.log
 

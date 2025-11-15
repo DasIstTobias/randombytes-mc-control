@@ -11,10 +11,16 @@ RUN apt-get update && \
 # Copy manifests
 COPY Cargo.toml ./
 
-# Copy source
+# Create a dummy main.rs to build dependencies
+RUN mkdir src && \
+    echo "fn main() {println!(\"dummy\");}" > src/main.rs && \
+    cargo build --release && \
+    rm -rf src
+
+# Copy actual source code
 COPY src ./src
 
-# Build application
+# Build application (dependencies are already cached)
 RUN cargo build --release
 
 # Runtime stage

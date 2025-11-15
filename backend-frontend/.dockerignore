@@ -1,0 +1,22 @@
+# Rust build artifacts
+target/
+Cargo.lock
+
+# Configuration files (will be mounted as volumes)
+backend.config
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+README.md
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -14,10 +14,14 @@ The backend is a Rust web server that connects to the Minecraft plugin and provi
 ## Requirements
 
 - Rust 1.75 or higher (for manual compilation)
-- Docker and Docker Compose (for containerised deployment)
+- Docker and Docker Compose V2 (for containerised deployment)
+  - Note: Docker Compose V2 uses `docker compose` (without hyphen) instead of `docker-compose`
+  - Check version: `docker compose version`
 - Active RandomBytes MC Control plugin on your Minecraft server
 
 ## Quick Start with Docker
+
+**Important:** Make sure you have created the `backend.config` file before starting Docker Compose, or the container will fail to start.
 
 1. Copy the example configuration:
    ```bash
@@ -33,6 +37,11 @@ The backend is a Rust web server that connects to the Minecraft plugin and provi
    ```
 
 3. Start the backend:
+   ```bash
+   docker compose up -d
+   ```
+   
+   Or with sudo if needed:
    ```bash
    sudo docker compose up -d
    ```
