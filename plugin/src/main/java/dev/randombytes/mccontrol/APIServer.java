@@ -45,10 +45,14 @@ public class APIServer {
             server.createContext("/api/player", new PlayerHandler());
             server.createContext("/api/whitelist", new WhitelistHandler());
             server.createContext("/api/blacklist", new BlacklistHandler());
+            server.createContext("/api/ops", new OpsHandler());
             server.createContext("/api/plugins", new PluginsHandler());
             server.createContext("/api/server", new ServerInfoHandler());
             server.createContext("/api/console", new ConsoleHandler());
             server.createContext("/api/command", new CommandHandler());
+            server.createContext("/api/chat", new ChatHandler());
+            server.createContext("/api/settings", new SettingsHandler());
+            server.createContext("/api/restart", new RestartHandler());
             
             server.setExecutor(null);
             server.start();
@@ -307,6 +311,26 @@ public class APIServer {
                     plugin.getLogger().log(Level.SEVERE, "Error adding to whitelist", e);
                     sendError(exchange, 500, "Internal server error");
                 }
+            } else if ("DELETE".equals(exchange.getRequestMethod())) {
+                try {
+                    String query = exchange.getRequestURI().getQuery();
+                    if (query == null || !query.startsWith("uuid=")) {
+                        sendError(exchange, 400, "UUID parameter required");
+                        return;
+                    }
+                    String uuid = query.substring(5);
+                    
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        plugin.getPlayerDataManager().removeFromWhitelist(uuid);
+                    });
+                    
+                    JsonObject response = new JsonObject();
+                    response.addProperty("success", true);
+                    sendResponse(exchange, 200, plugin.getGson().toJson(response));
+                } catch (Exception e) {
+                    plugin.getLogger().log(Level.SEVERE, "Error removing from whitelist", e);
+                    sendError(exchange, 500, "Internal server error");
+                }
             } else {
                 sendError(exchange, 405, "Method not allowed");
             }
@@ -346,6 +370,26 @@ public class APIServer {
                     sendResponse(exchange, 200, plugin.getGson().toJson(response));
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Error adding to blacklist", e);
+                    sendError(exchange, 500, "Internal server error");
+                }
+            } else if ("DELETE".equals(exchange.getRequestMethod())) {
+                try {
+                    String query = exchange.getRequestURI().getQuery();
+                    if (query == null || !query.startsWith("uuid=")) {
+                        sendError(exchange, 400, "UUID parameter required");
+                        return;
+                    }
+                    String uuid = query.substring(5);
+                    
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        plugin.getPlayerDataManager().removeFromBlacklist(uuid);
+                    });
+                    
+                    JsonObject response = new JsonObject();
+                    response.addProperty("success", true);
+                    sendResponse(exchange, 200, plugin.getGson().toJson(response));
+                } catch (Exception e) {
+                    plugin.getLogger().log(Level.SEVERE, "Error removing from blacklist", e);
                     sendError(exchange, 500, "Internal server error");
                 }
             } else {
@@ -454,6 +498,190 @@ public class APIServer {
                 sendResponse(exchange, 200, plugin.getGson().toJson(response));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error executing command", e);
+                sendError(exchange, 500, "Internal server error");
+            }
+        }
+    }
+    
+    // OPs handler
+    private class OpsHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!validateAuth(exchange)) {
+                sendError(exchange, 401, "Unauthorized");
+                return;
+            }
+            
+            if ("GET".equals(exchange.getRequestMethod())) {
+                try {
+                    JsonObject ops = plugin.getPlayerDataManager().getOps();
+                    sendResponse(exchange, 200, plugin.getGson().toJson(ops));
+                } catch (Exception e) {
+                    plugin.getLogger().log(Level.SEVERE, "Error getting ops", e);
+                    sendError(exchange, 500, "Internal server error");
+                }
+            } else if ("POST".equals(exchange.getRequestMethod())) {
+                try {
+                    String body = readRequestBody(exchange);
+                    JsonObject request = plugin.getGson().fromJson(body, JsonObject.class);
+                    String name = request.get("name").getAsString();
+                    String uuid = request.get("uuid").getAsString();
+                    
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        plugin.getPlayerDataManager().addToOps(name, uuid);
+                    });
+                    
+                    JsonObject response = new JsonObject();
+                    response.addProperty("success", true);
+                    sendResponse(exchange, 200, plugin.getGson().toJson(response));
+                } catch (Exception e) {
+                    plugin.getLogger().log(Level.SEVERE, "Error adding op", e);
+                    sendError(exchange, 500, "Internal server error");
+                }
+            } else if ("DELETE".equals(exchange.getRequestMethod())) {
+                try {
+                    String query = exchange.getRequestURI().getQuery();
+                    if (query == null || !query.startsWith("uuid=")) {
+                        sendError(exchange, 400, "UUID parameter required");
+                        return;
+                    }
+                    String uuid = query.substring(5);
+                    
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        plugin.getPlayerDataManager().removeFromOps(uuid);
+                    });
+                    
+                    JsonObject response = new JsonObject();
+                    response.addProperty("success", true);
+                    sendResponse(exchange, 200, plugin.getGson().toJson(response));
+                } catch (Exception e) {
+                    plugin.getLogger().log(Level.SEVERE, "Error removing op", e);
+                    sendError(exchange, 500, "Internal server error");
+                }
+            } else {
+                sendError(exchange, 405, "Method not allowed");
+            }
+        }
+    }
+    
+    // Chat handler
+    private class ChatHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!validateAuth(exchange)) {
+                sendError(exchange, 401, "Unauthorized");
+                return;
+            }
+            
+            if ("GET".equals(exchange.getRequestMethod())) {
+                try {
+                    JsonObject logs = plugin.getPlayerDataManager().getChatLogs();
+                    sendResponse(exchange, 200, plugin.getGson().toJson(logs));
+                } catch (Exception e) {
+                    plugin.getLogger().log(Level.SEVERE, "Error getting chat logs", e);
+                    sendError(exchange, 500, "Internal server error");
+                }
+            } else if ("POST".equals(exchange.getRequestMethod())) {
+                try {
+                    String body = readRequestBody(exchange);
+                    JsonObject request = plugin.getGson().fromJson(body, JsonObject.class);
+                    String message = request.get("message").getAsString();
+                    
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        plugin.getPlayerDataManager().sendChatMessage(message);
+                    });
+                    
+                    JsonObject response = new JsonObject();
+                    response.addProperty("success", true);
+                    sendResponse(exchange, 200, plugin.getGson().toJson(response));
+                } catch (Exception e) {
+                    plugin.getLogger().log(Level.SEVERE, "Error sending chat message", e);
+                    sendError(exchange, 500, "Internal server error");
+                }
+            } else {
+                sendError(exchange, 405, "Method not allowed");
+            }
+        }
+    }
+    
+    // Settings handler
+    private class SettingsHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!validateAuth(exchange)) {
+                sendError(exchange, 401, "Unauthorized");
+                return;
+            }
+            
+            String path = exchange.getRequestURI().getPath();
+            
+            if ("GET".equals(exchange.getRequestMethod()) && "/api/settings".equals(path)) {
+                try {
+                    JsonObject settings = plugin.getPlayerDataManager().getSettings();
+                    sendResponse(exchange, 200, plugin.getGson().toJson(settings));
+                } catch (Exception e) {
+                    plugin.getLogger().log(Level.SEVERE, "Error getting settings", e);
+                    sendError(exchange, 500, "Internal server error");
+                }
+            } else if ("POST".equals(exchange.getRequestMethod())) {
+                try {
+                    String body = readRequestBody(exchange);
+                    JsonObject request = plugin.getGson().fromJson(body, JsonObject.class);
+                    
+                    if (path.endsWith("/properties")) {
+                        JsonObject properties = request.getAsJsonObject("properties");
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            plugin.getPlayerDataManager().updateServerProperties(properties);
+                        });
+                    } else if (path.endsWith("/gamerules")) {
+                        JsonObject gamerules = request.getAsJsonObject("gamerules");
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            plugin.getPlayerDataManager().updateGameRules(gamerules);
+                        });
+                    } else {
+                        sendError(exchange, 404, "Unknown settings endpoint");
+                        return;
+                    }
+                    
+                    JsonObject response = new JsonObject();
+                    response.addProperty("success", true);
+                    sendResponse(exchange, 200, plugin.getGson().toJson(response));
+                } catch (Exception e) {
+                    plugin.getLogger().log(Level.SEVERE, "Error updating settings", e);
+                    sendError(exchange, 500, "Internal server error");
+                }
+            } else {
+                sendError(exchange, 405, "Method not allowed");
+            }
+        }
+    }
+    
+    // Restart handler
+    private class RestartHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!validateAuth(exchange)) {
+                sendError(exchange, 401, "Unauthorized");
+                return;
+            }
+            
+            if (!"POST".equals(exchange.getRequestMethod())) {
+                sendError(exchange, 405, "Method not allowed");
+                return;
+            }
+            
+            try {
+                JsonObject response = new JsonObject();
+                response.addProperty("success", true);
+                response.addProperty("message", "Server restart initiated");
+                sendResponse(exchange, 200, plugin.getGson().toJson(response));
+                
+                // Schedule server restart
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "restart");
+                }, 20L); // 1 second delay
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.SEVERE, "Error restarting server", e);
                 sendError(exchange, 500, "Internal server error");
             }
         }
