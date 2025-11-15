@@ -27,7 +27,6 @@ buildNumber.properties
 
 # Rust
 /target
-Cargo.lock
 **/*.rs.bk
 *.pdb
 
