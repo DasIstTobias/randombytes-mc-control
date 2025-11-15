@@ -1,6 +1,5 @@
 # Rust build artifacts
 target/
-Cargo.lock
 
 # Configuration files (will be mounted as volumes)
 backend.config
