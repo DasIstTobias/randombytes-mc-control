@@ -74,12 +74,23 @@ async fn main() {
         .route("/api/player/:uuid/action", post(player_action))
         .route("/api/whitelist", get(get_whitelist))
         .route("/api/whitelist/add", post(add_to_whitelist))
+        .route("/api/whitelist/remove", axum::routing::delete(remove_from_whitelist))
         .route("/api/blacklist", get(get_blacklist))
         .route("/api/blacklist/add", post(add_to_blacklist))
+        .route("/api/blacklist/remove", axum::routing::delete(remove_from_blacklist))
+        .route("/api/ops", get(get_ops))
+        .route("/api/ops/add", post(add_to_ops))
+        .route("/api/ops/remove", axum::routing::delete(remove_from_ops))
         .route("/api/plugins", get(get_plugins))
         .route("/api/server", get(get_server_info))
         .route("/api/console", get(get_console))
         .route("/api/command", post(execute_command))
+        .route("/api/chat", get(get_chat))
+        .route("/api/chat", post(send_chat))
+        .route("/api/settings", get(get_settings))
+        .route("/api/settings/properties", post(update_properties))
+        .route("/api/settings/gamerules", post(update_gamerules))
+        .route("/api/restart", post(restart_server))
         // Serve frontend
         .nest_service("/", ServeDir::new("frontend"))
         .with_state(state);
@@ -260,6 +271,170 @@ async fn execute_command(
         Ok(result) => Ok(Json(result)),
         Err(e) => {
             error!("Failed to execute command: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct RemoveQuery {
+    uuid: String,
+}
+
+async fn remove_from_whitelist(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<RemoveQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.remove_from_whitelist(&query.uuid).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to remove from whitelist: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn remove_from_blacklist(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<RemoveQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.remove_from_blacklist(&query.uuid).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to remove from blacklist: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn get_ops(State(state): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.get_ops().await {
+        Ok(ops) => Ok(Json(ops)),
+        Err(e) => {
+            error!("Failed to get ops: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn add_to_ops(
+    State(state): State<AppState>,
+    Json(payload): Json<AddToList>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.add_to_ops(&payload.name, &payload.uuid).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to add to ops: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn remove_from_ops(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<RemoveQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.remove_from_ops(&query.uuid).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to remove from ops: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn get_chat(State(state): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.get_chat().await {
+        Ok(logs) => Ok(Json(logs)),
+        Err(e) => {
+            error!("Failed to get chat: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct ChatMessage {
+    message: String,
+}
+
+async fn send_chat(
+    State(state): State<AppState>,
+    Json(payload): Json<ChatMessage>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.send_chat(&payload.message).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to send chat: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn get_settings(State(state): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.get_settings().await {
+        Ok(settings) => Ok(Json(settings)),
+        Err(e) => {
+            error!("Failed to get settings: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct UpdateProperties {
+    properties: serde_json::Value,
+}
+
+async fn update_properties(
+    State(state): State<AppState>,
+    Json(payload): Json<UpdateProperties>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.update_properties(payload.properties).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to update properties: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct UpdateGamerules {
+    gamerules: serde_json::Value,
+}
+
+async fn update_gamerules(
+    State(state): State<AppState>,
+    Json(payload): Json<UpdateGamerules>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.update_gamerules(payload.gamerules).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to update gamerules: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn restart_server(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.restart_server().await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to restart server: {}", e);
             Err(ApiError::PluginError(e.to_string()))
         }
     }

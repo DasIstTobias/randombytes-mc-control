@@ -11,20 +11,28 @@
         <nav class="sidebar">
             <h1>MC Control</h1>
             <ul class="nav-menu">
-                <li><a href="#" class="nav-link active" data-page="metrics">Server Metrics</a></li>
+                <li class="nav-section-title"># Status</li>
+                <li><a href="#" class="nav-link active" data-page="status">Status</a></li>
+                <li><a href="#" class="nav-link" data-page="server">Server Info</a></li>
+                <li><a href="#" class="nav-link" data-page="plugins">Plugins</a></li>
+                
+                <li class="nav-section-title"># Player Management</li>
                 <li><a href="#" class="nav-link" data-page="players">Players</a></li>
                 <li><a href="#" class="nav-link" data-page="whitelist">Whitelist</a></li>
                 <li><a href="#" class="nav-link" data-page="blacklist">Blacklist</a></li>
-                <li><a href="#" class="nav-link" data-page="plugins">Plugins</a></li>
-                <li><a href="#" class="nav-link" data-page="server">Server Info</a></li>
+                <li><a href="#" class="nav-link" data-page="ops">OPs</a></li>
+                
+                <li class="nav-section-title"># Server Management</li>
                 <li><a href="#" class="nav-link" data-page="console">Console</a></li>
+                <li><a href="#" class="nav-link" data-page="chat">Chat</a></li>
+                <li><a href="#" class="nav-link" data-page="settings">Server Settings</a></li>
             </ul>
         </nav>
 
         <main class="content">
-            <!-- Metrics Page -->
-            <div id="metrics-page" class="page active">
-                <h2>Server Metrics</h2>
+            <!-- Status Page (formerly Metrics) -->
+            <div id="status-page" class="page active">
+                <h2>Server Status</h2>
                 <p class="subtitle">Last 10 minutes</p>
                 <div class="metrics-grid">
                     <div class="metric-card">
@@ -46,6 +54,10 @@
                 </div>
                 <div class="chart-container">
                     <canvas id="metricsChart"></canvas>
+                </div>
+                <div class="form-section" style="margin-top: 2rem;">
+                    <h3>Server Actions</h3>
+                    <button id="restart-server-btn" class="danger" style="width: auto;">Restart Server</button>
                 </div>
             </div>
 
@@ -75,7 +87,7 @@
                     <h3>Add Player to Whitelist</h3>
                     <form id="whitelist-form" class="add-form">
                         <input type="text" id="whitelist-name" placeholder="Player Name" required>
-                        <input type="text" id="whitelist-uuid" placeholder="Player UUID" required>
+                        <input type="text" id="whitelist-uuid" placeholder="Player UUID (optional)">
                         <button type="submit">Add to Whitelist</button>
                     </form>
                 </div>
@@ -86,6 +98,7 @@
                             <tr>
                                 <th>Name</th>
                                 <th>UUID</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="whitelist-list"></tbody>
@@ -100,7 +113,7 @@
                     <h3>Add Player to Blacklist</h3>
                     <form id="blacklist-form" class="add-form">
                         <input type="text" id="blacklist-name" placeholder="Player Name" required>
-                        <input type="text" id="blacklist-uuid" placeholder="Player UUID" required>
+                        <input type="text" id="blacklist-uuid" placeholder="Player UUID (optional)">
                         <button type="submit">Add to Blacklist</button>
                     </form>
                 </div>
@@ -111,9 +124,36 @@
                             <tr>
                                 <th>Name</th>
                                 <th>UUID</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="blacklist-list"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- OPs Page -->
+            <div id="ops-page" class="page">
+                <h2>Server Operators</h2>
+                <div class="form-section">
+                    <h3>Add Operator</h3>
+                    <form id="ops-form" class="add-form">
+                        <input type="text" id="ops-name" placeholder="Player Name" required>
+                        <input type="text" id="ops-uuid" placeholder="Player UUID (optional)">
+                        <button type="submit">Add OP</button>
+                    </form>
+                </div>
+                <div class="table-container">
+                    <h3>Current Operators</h3>
+                    <table id="ops-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>UUID</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ops-list"></tbody>
                     </table>
                 </div>
             </div>
@@ -140,17 +180,50 @@
             <div id="server-page" class="page">
                 <h2>Server Information</h2>
                 <div id="server-info" class="info-grid"></div>
+                <div class="info-divider"></div>
+                <h3 style="margin-bottom: 1rem;">Worlds</h3>
+                <div id="server-worlds" class="info-grid"></div>
             </div>
 
             <!-- Console Page -->
             <div id="console-page" class="page">
                 <h2>Console</h2>
+                <p class="subtitle">Server console output and PaperMC commands</p>
                 <div class="console-container">
                     <div class="console-log" id="console-log"></div>
                     <form id="console-form" class="console-input">
-                        <input type="text" id="console-command" placeholder="Enter command..." autocomplete="off">
+                        <input type="text" id="console-command" placeholder="Enter command (without /)..." autocomplete="off">
                         <button type="submit">Execute</button>
                     </form>
+                </div>
+            </div>
+
+            <!-- Chat Page -->
+            <div id="chat-page" class="page">
+                <h2>Chat Console</h2>
+                <p class="subtitle">Send messages as Server and execute in-game commands</p>
+                <div class="console-container">
+                    <div class="console-log" id="chat-log"></div>
+                    <form id="chat-form" class="console-input">
+                        <input type="text" id="chat-input" placeholder="Enter message or /command..." autocomplete="off">
+                        <button type="submit">Send</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Settings Page -->
+            <div id="settings-page" class="page">
+                <h2>Server Settings</h2>
+                <p class="subtitle">Configure server.properties and game rules</p>
+                
+                <div class="form-section">
+                    <h3>Server Properties</h3>
+                    <div id="server-properties-form"></div>
+                </div>
+
+                <div class="form-section" style="margin-top: 1.5rem;">
+                    <h3>Game Rules</h3>
+                    <div id="gamerules-form"></div>
                 </div>
             </div>
         </main>

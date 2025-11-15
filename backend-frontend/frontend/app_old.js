@@ -14,36 +14,8 @@ const API = {
         });
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         return response.json();
-    },
-
-    async delete(endpoint) {
-        const response = await fetch(`/api${endpoint}`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        return response.json();
     }
 };
-
-// Mojang API for UUID lookup
-async function fetchUUID(username) {
-    try {
-        const response = await fetch(`https://api.mojang.com/users/profiles/minecraft/${username}`);
-        if (!response.ok) return null;
-        const data = await response.json();
-        return data.id;
-    } catch (error) {
-        console.error('Failed to fetch UUID:', error);
-        return null;
-    }
-}
-
-// Format UUID with dashes
-function formatUUID(uuid) {
-    if (!uuid || uuid.length !== 32) return uuid;
-    return `${uuid.slice(0, 8)}-${uuid.slice(8, 12)}-${uuid.slice(12, 16)}-${uuid.slice(16, 20)}-${uuid.slice(20)}`;
-}
 
 // Navigation
 document.querySelectorAll('.nav-link').forEach(link => {
@@ -68,9 +40,8 @@ document.querySelectorAll('.nav-link').forEach(link => {
 async function loadPage(page) {
     try {
         switch(page) {
-            case 'status':
             case 'metrics':
-                await loadStatus();
+                await loadMetrics();
                 break;
             case 'players':
                 await loadPlayers();
@@ -81,9 +52,6 @@ async function loadPage(page) {
             case 'blacklist':
                 await loadBlacklist();
                 break;
-            case 'ops':
-                await loadOps();
-                break;
             case 'plugins':
                 await loadPlugins();
                 break;
@@ -93,33 +61,28 @@ async function loadPage(page) {
             case 'console':
                 await loadConsole();
                 break;
-            case 'chat':
-                await loadChat();
-                break;
-            case 'settings':
-                await loadSettings();
-                break;
         }
     } catch (error) {
         console.error('Error loading page:', error);
     }
 }
 
-// Status (formerly Metrics)
-let statusInterval;
+// Metrics
+let metricsChart;
+let metricsInterval;
 
-async function loadStatus() {
+async function loadMetrics() {
     // Clear existing interval
-    if (statusInterval) clearInterval(statusInterval);
+    if (metricsInterval) clearInterval(metricsInterval);
     
     // Load initial data
-    await updateStatus();
+    await updateMetrics();
     
     // Update every 2 seconds
-    statusInterval = setInterval(updateStatus, 2000);
+    metricsInterval = setInterval(updateMetrics, 2000);
 }
 
-async function updateStatus() {
+async function updateMetrics() {
     try {
         const data = await API.get('/metrics');
         
@@ -135,7 +98,7 @@ async function updateStatus() {
             updateMetricsChart(data.metrics);
         }
     } catch (error) {
-        console.error('Error updating status:', error);
+        console.error('Error updating metrics:', error);
     }
 }
 
@@ -148,7 +111,7 @@ function updateMetricsChart(metrics) {
     canvas.height = canvas.offsetHeight;
     
     const width = canvas.width;
-    const height = canvas.offsetHeight;
+    const height = canvas.height;
     const padding = 40;
     const graphWidth = width - padding * 2;
     const graphHeight = height - padding * 2;
@@ -162,7 +125,7 @@ function updateMetricsChart(metrics) {
     const maxMemory = 100;
     
     // Draw grid
-    ctx.strokeStyle = '#333';
+    ctx.strokeStyle = '#e0e0e0';
     ctx.lineWidth = 1;
     for (let i = 0; i <= 5; i++) {
         const y = padding + (graphHeight / 5) * i;
@@ -173,7 +136,7 @@ function updateMetricsChart(metrics) {
     }
     
     // Draw TPS line
-    ctx.strokeStyle = '#4a9';
+    ctx.strokeStyle = '#3498db';
     ctx.lineWidth = 2;
     ctx.beginPath();
     metrics.forEach((point, index) => {
@@ -185,7 +148,7 @@ function updateMetricsChart(metrics) {
     ctx.stroke();
     
     // Draw Memory line
-    ctx.strokeStyle = '#d44';
+    ctx.strokeStyle = '#e74c3c';
     ctx.lineWidth = 2;
     ctx.beginPath();
     metrics.forEach((point, index) => {
@@ -197,27 +160,12 @@ function updateMetricsChart(metrics) {
     ctx.stroke();
     
     // Draw legend
-    ctx.font = '12px monospace';
-    ctx.fillStyle = '#4a9';
+    ctx.font = '12px sans-serif';
+    ctx.fillStyle = '#3498db';
     ctx.fillText('TPS', padding, 20);
-    ctx.fillStyle = '#d44';
+    ctx.fillStyle = '#e74c3c';
     ctx.fillText('Memory %', padding + 60, 20);
 }
-
-// Restart Server
-document.getElementById('restart-server-btn').addEventListener('click', async () => {
-    if (!confirm('Are you sure you want to restart the server? All players will be disconnected.')) {
-        return;
-    }
-    
-    try {
-        await API.post('/restart', {});
-        alert('Server restart initiated. The server will be back online in a few moments.');
-    } catch (error) {
-        console.error('Error restarting server:', error);
-        alert('Failed to restart server: ' + error.message);
-    }
-});
 
 // Players
 async function loadPlayers() {
@@ -231,7 +179,7 @@ async function loadPlayers() {
                 const row = document.createElement('tr');
                 
                 const statusClass = player.online ? 'online' : 'offline';
-                const statusText = player.online ? 'Online' : 'Offline';
+                const statusText = player.online ? 'Online' : formatLastSeen(player.lastSeen);
                 const playTime = formatPlayTime(player.playTime);
                 
                 row.innerHTML = `
@@ -239,9 +187,8 @@ async function loadPlayers() {
                     <td><span class="status ${statusClass}">${statusText}</span></td>
                     <td>${playTime}</td>
                     <td>
-                        <button onclick="showPlayerInventory('${player.uuid}', '${escapeHtml(player.name)}')">Inventory</button>
+                        <button onclick="showPlayerInventory('${player.uuid}', '${escapeHtml(player.name)}')" ${!player.online ? 'disabled' : ''}>Inventory</button>
                         <button class="danger" onclick="toggleBan('${player.uuid}', ${player.banned})">${player.banned ? 'Unban' : 'Ban'}</button>
-                        <button onclick="toggleOp('${player.uuid}', ${player.op || false})">${player.op ? 'DeOP' : 'OP'}</button>
                     </td>
                 `;
                 tbody.appendChild(row);
@@ -275,7 +222,7 @@ async function showPlayerInventory(uuid, name) {
                 inventoryDiv.appendChild(itemDiv);
             });
         } else {
-            inventoryDiv.innerHTML = '<p>Inventory is empty or unavailable</p>';
+            inventoryDiv.innerHTML = '<p>Inventory is empty or player is offline</p>';
         }
         
         document.getElementById('player-modal').classList.add('active');
@@ -296,31 +243,8 @@ async function toggleBan(uuid, isBanned) {
     }
 }
 
-async function toggleOp(uuid, isOp) {
-    try {
-        const action = isOp ? 'deop' : 'op';
-        await API.post(`/player/${uuid}/action`, { action });
-        await loadPlayers();
-    } catch (error) {
-        console.error('Error toggling OP:', error);
-        alert('Failed to ' + (isOp ? 'de-op' : 'op') + ' player');
-    }
-}
-
 // Whitelist
-let whitelistInterval;
-
 async function loadWhitelist() {
-    // Clear existing interval
-    if (whitelistInterval) clearInterval(whitelistInterval);
-    
-    await updateWhitelist();
-    
-    // Auto-refresh every 5 seconds
-    whitelistInterval = setInterval(updateWhitelist, 5000);
-}
-
-async function updateWhitelist() {
     try {
         const data = await API.get('/whitelist');
         const tbody = document.getElementById('whitelist-list');
@@ -332,12 +256,11 @@ async function updateWhitelist() {
                 row.innerHTML = `
                     <td>${escapeHtml(entry.name)}</td>
                     <td><code>${entry.uuid}</code></td>
-                    <td><button class="danger" onclick="removeFromWhitelist('${entry.uuid}', '${escapeHtml(entry.name)}')">Remove</button></td>
                 `;
                 tbody.appendChild(row);
             });
         } else {
-            tbody.innerHTML = '<tr><td colspan="3">Whitelist is empty</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="2">Whitelist is empty</td></tr>';
         }
     } catch (error) {
         console.error('Error loading whitelist:', error);
@@ -347,55 +270,21 @@ async function updateWhitelist() {
 document.getElementById('whitelist-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    const name = document.getElementById('whitelist-name').value.trim();
-    let uuid = document.getElementById('whitelist-uuid').value.trim();
-    
-    if (!uuid) {
-        // Fetch UUID from Mojang API
-        const fetchedUUID = await fetchUUID(name);
-        if (!fetchedUUID) {
-            alert('Could not find UUID for player: ' + name);
-            return;
-        }
-        uuid = formatUUID(fetchedUUID);
-    }
+    const name = document.getElementById('whitelist-name').value;
+    const uuid = document.getElementById('whitelist-uuid').value;
     
     try {
         await API.post('/whitelist/add', { name, uuid });
         document.getElementById('whitelist-form').reset();
-        await updateWhitelist();
+        await loadWhitelist();
     } catch (error) {
         console.error('Error adding to whitelist:', error);
         alert('Failed to add player to whitelist');
     }
 });
 
-async function removeFromWhitelist(uuid, name) {
-    if (!confirm(`Remove ${name} from whitelist?`)) return;
-    
-    try {
-        await API.delete(`/whitelist/remove?uuid=${uuid}`);
-        await updateWhitelist();
-    } catch (error) {
-        console.error('Error removing from whitelist:', error);
-        alert('Failed to remove player from whitelist');
-    }
-}
-
 // Blacklist
-let blacklistInterval;
-
 async function loadBlacklist() {
-    // Clear existing interval
-    if (blacklistInterval) clearInterval(blacklistInterval);
-    
-    await updateBlacklist();
-    
-    // Auto-refresh every 5 seconds
-    blacklistInterval = setInterval(updateBlacklist, 5000);
-}
-
-async function updateBlacklist() {
     try {
         const data = await API.get('/blacklist');
         const tbody = document.getElementById('blacklist-list');
@@ -407,12 +296,11 @@ async function updateBlacklist() {
                 row.innerHTML = `
                     <td>${escapeHtml(entry.name)}</td>
                     <td><code>${entry.uuid}</code></td>
-                    <td><button class="danger" onclick="removeFromBlacklist('${entry.uuid}', '${escapeHtml(entry.name)}')">Remove</button></td>
                 `;
                 tbody.appendChild(row);
             });
         } else {
-            tbody.innerHTML = '<tr><td colspan="3">Blacklist is empty</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="2">Blacklist is empty</td></tr>';
         }
     } catch (error) {
         console.error('Error loading blacklist:', error);
@@ -422,115 +310,18 @@ async function updateBlacklist() {
 document.getElementById('blacklist-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    const name = document.getElementById('blacklist-name').value.trim();
-    let uuid = document.getElementById('blacklist-uuid').value.trim();
-    
-    if (!uuid) {
-        // Fetch UUID from Mojang API
-        const fetchedUUID = await fetchUUID(name);
-        if (!fetchedUUID) {
-            alert('Could not find UUID for player: ' + name);
-            return;
-        }
-        uuid = formatUUID(fetchedUUID);
-    }
+    const name = document.getElementById('blacklist-name').value;
+    const uuid = document.getElementById('blacklist-uuid').value;
     
     try {
         await API.post('/blacklist/add', { name, uuid });
         document.getElementById('blacklist-form').reset();
-        await updateBlacklist();
+        await loadBlacklist();
     } catch (error) {
         console.error('Error adding to blacklist:', error);
         alert('Failed to add player to blacklist');
     }
 });
-
-async function removeFromBlacklist(uuid, name) {
-    if (!confirm(`Remove ${name} from blacklist?`)) return;
-    
-    try {
-        await API.delete(`/blacklist/remove?uuid=${uuid}`);
-        await updateBlacklist();
-    } catch (error) {
-        console.error('Error removing from blacklist:', error);
-        alert('Failed to remove player from blacklist');
-    }
-}
-
-// OPs
-let opsInterval;
-
-async function loadOps() {
-    // Clear existing interval
-    if (opsInterval) clearInterval(opsInterval);
-    
-    await updateOps();
-    
-    // Auto-refresh every 5 seconds
-    opsInterval = setInterval(updateOps, 5000);
-}
-
-async function updateOps() {
-    try {
-        const data = await API.get('/ops');
-        const tbody = document.getElementById('ops-list');
-        tbody.innerHTML = '';
-        
-        if (data.ops && data.ops.length > 0) {
-            data.ops.forEach(entry => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${escapeHtml(entry.name)}</td>
-                    <td><code>${entry.uuid}</code></td>
-                    <td><button class="danger" onclick="removeFromOps('${entry.uuid}', '${escapeHtml(entry.name)}')">Remove</button></td>
-                `;
-                tbody.appendChild(row);
-            });
-        } else {
-            tbody.innerHTML = '<tr><td colspan="3">No operators</td></tr>';
-        }
-    } catch (error) {
-        console.error('Error loading ops:', error);
-    }
-}
-
-document.getElementById('ops-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const name = document.getElementById('ops-name').value.trim();
-    let uuid = document.getElementById('ops-uuid').value.trim();
-    
-    if (!uuid) {
-        // Fetch UUID from Mojang API
-        const fetchedUUID = await fetchUUID(name);
-        if (!fetchedUUID) {
-            alert('Could not find UUID for player: ' + name);
-            return;
-        }
-        uuid = formatUUID(fetchedUUID);
-    }
-    
-    try {
-        await API.post('/ops/add', { name, uuid });
-        document.getElementById('ops-form').reset();
-        await updateOps();
-    } catch (error) {
-        console.error('Error adding operator:', error);
-        alert('Failed to add operator');
-    }
-});
-
-async function removeFromOps(uuid, name) {
-    if (!confirm(`Remove ${name} from operators?`)) return;
-    
-    try {
-        await API.delete(`/ops/remove?uuid=${uuid}`);
-        await updateOps();
-    } catch (error) {
-        console.error('Error removing operator:', error);
-        alert('Failed to remove operator');
-    }
-}
 
 // Plugins
 async function loadPlugins() {
@@ -565,10 +356,8 @@ async function loadPlugins() {
 async function loadServerInfo() {
     try {
         const data = await API.get('/server');
-        const infoContainer = document.getElementById('server-info');
-        const worldsContainer = document.getElementById('server-worlds');
-        infoContainer.innerHTML = '';
-        worldsContainer.innerHTML = '';
+        const container = document.getElementById('server-info');
+        container.innerHTML = '';
         
         // Main server info
         const mainCard = createInfoCard('Server Information', {
@@ -582,7 +371,7 @@ async function loadServerInfo() {
             'Port': data.port,
             'MOTD': data.motd
         });
-        infoContainer.appendChild(mainCard);
+        container.appendChild(mainCard);
         
         // Settings
         const settingsCard = createInfoCard('Settings', {
@@ -591,7 +380,7 @@ async function loadServerInfo() {
             'Allow Nether': data.allowNether ? 'Yes' : 'No',
             'Allow End': data.allowEnd ? 'Yes' : 'No'
         });
-        infoContainer.appendChild(settingsCard);
+        container.appendChild(settingsCard);
         
         // Worlds
         if (data.worlds && data.worlds.length > 0) {
@@ -602,7 +391,7 @@ async function loadServerInfo() {
                     'PvP': world.pvp ? 'Enabled' : 'Disabled',
                     'Seed': world.seed
                 });
-                worldsContainer.appendChild(worldCard);
+                container.appendChild(worldCard);
             });
         }
     } catch (error) {
@@ -675,161 +464,6 @@ document.getElementById('console-form').addEventListener('submit', async (e) => 
     }
 });
 
-// Chat Console
-let chatInterval;
-
-async function loadChat() {
-    // Clear existing interval
-    if (chatInterval) clearInterval(chatInterval);
-    
-    // Load initial logs
-    await updateChat();
-    
-    // Update every 2 seconds
-    chatInterval = setInterval(updateChat, 2000);
-}
-
-async function updateChat() {
-    try {
-        const data = await API.get('/chat');
-        const logDiv = document.getElementById('chat-log');
-        
-        if (data.logs && data.logs.length > 0) {
-            logDiv.innerHTML = data.logs.map(log => 
-                `<div class="console-log-line">${escapeHtml(log)}</div>`
-            ).join('');
-            
-            // Auto-scroll to bottom
-            logDiv.scrollTop = logDiv.scrollHeight;
-        }
-    } catch (error) {
-        console.error('Error loading chat:', error);
-    }
-}
-
-document.getElementById('chat-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const input = document.getElementById('chat-input');
-    const message = input.value.trim();
-    
-    if (!message) return;
-    
-    try {
-        await API.post('/chat', { message });
-        input.value = '';
-        
-        // Wait a bit then refresh chat
-        setTimeout(updateChat, 500);
-    } catch (error) {
-        console.error('Error sending chat message:', error);
-        alert('Failed to send message');
-    }
-});
-
-// Settings
-async function loadSettings() {
-    try {
-        const data = await API.get('/settings');
-        
-        // Render server properties
-        const propsContainer = document.getElementById('server-properties-form');
-        propsContainer.innerHTML = '';
-        
-        if (data.properties) {
-            for (const [key, value] of Object.entries(data.properties)) {
-                const formGroup = document.createElement('div');
-                formGroup.className = 'form-group';
-                
-                const label = document.createElement('label');
-                label.textContent = key.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                
-                const input = document.createElement('input');
-                input.type = 'text';
-                input.value = value;
-                input.id = `prop-${key}`;
-                input.dataset.key = key;
-                
-                formGroup.appendChild(label);
-                formGroup.appendChild(input);
-                propsContainer.appendChild(formGroup);
-            }
-            
-            const saveBtn = document.createElement('button');
-            saveBtn.textContent = 'Save Properties';
-            saveBtn.style.marginTop = '1rem';
-            saveBtn.onclick = saveServerProperties;
-            propsContainer.appendChild(saveBtn);
-        }
-        
-        // Render game rules
-        const rulesContainer = document.getElementById('gamerules-form');
-        rulesContainer.innerHTML = '';
-        
-        if (data.gamerules) {
-            for (const [key, value] of Object.entries(data.gamerules)) {
-                const formGroup = document.createElement('div');
-                formGroup.className = 'form-group';
-                
-                const label = document.createElement('label');
-                label.textContent = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
-                
-                const input = document.createElement('input');
-                input.type = 'text';
-                input.value = value;
-                input.id = `rule-${key}`;
-                input.dataset.key = key;
-                
-                formGroup.appendChild(label);
-                formGroup.appendChild(input);
-                rulesContainer.appendChild(formGroup);
-            }
-            
-            const saveBtn = document.createElement('button');
-            saveBtn.textContent = 'Save Game Rules';
-            saveBtn.style.marginTop = '1rem';
-            saveBtn.onclick = saveGameRules;
-            rulesContainer.appendChild(saveBtn);
-        }
-    } catch (error) {
-        console.error('Error loading settings:', error);
-    }
-}
-
-async function saveServerProperties() {
-    const properties = {};
-    document.querySelectorAll('#server-properties-form input').forEach(input => {
-        if (input.dataset.key) {
-            properties[input.dataset.key] = input.value;
-        }
-    });
-    
-    try {
-        await API.post('/settings/properties', { properties });
-        alert('Server properties saved successfully');
-    } catch (error) {
-        console.error('Error saving properties:', error);
-        alert('Failed to save server properties');
-    }
-}
-
-async function saveGameRules() {
-    const gamerules = {};
-    document.querySelectorAll('#gamerules-form input').forEach(input => {
-        if (input.dataset.key) {
-            gamerules[input.dataset.key] = input.value;
-        }
-    });
-    
-    try {
-        await API.post('/settings/gamerules', { gamerules });
-        alert('Game rules saved successfully');
-    } catch (error) {
-        console.error('Error saving game rules:', error);
-        alert('Failed to save game rules');
-    }
-}
-
 // Modal
 document.querySelector('.close').addEventListener('click', () => {
     document.getElementById('player-modal').classList.remove('active');
@@ -876,4 +510,4 @@ function escapeHtml(text) {
 }
 
 // Initialize
-loadPage('status');
+loadPage('metrics');
