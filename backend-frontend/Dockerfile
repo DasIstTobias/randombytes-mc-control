@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1.75-slim AS builder
+FROM rust:1.89.0-trixie AS builder
 
 WORKDIR /build
 
@@ -18,13 +18,13 @@ COPY src ./src
 RUN cargo build --release
 
 # Runtime stage
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 WORKDIR /app
 
 # Install runtime dependencies
 RUN apt-get update && \
-    apt-get install -y ca-certificates libssl3 && \
+    apt-get install -y ca-certificates libssl3t64 && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy binary from builder
