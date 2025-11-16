@@ -580,12 +580,23 @@ document.getElementById('shutdown-server-btn').addEventListener('click', async (
 
 // Players
 let allPlayers = []; // Store all players for search filtering
+let currentPlayerSearch = ''; // Store current search term
 
 async function loadPlayers() {
     try {
         const data = await API.get('/players');
         allPlayers = data.players || [];
-        renderPlayers(allPlayers);
+        
+        // Apply current search filter when refreshing
+        if (currentPlayerSearch) {
+            const filtered = allPlayers.filter(player => 
+                player.name.toLowerCase().includes(currentPlayerSearch) || 
+                player.uuid.toLowerCase().includes(currentPlayerSearch)
+            );
+            renderPlayers(filtered);
+        } else {
+            renderPlayers(allPlayers);
+        }
     } catch (error) {
         console.error('Error loading players:', error);
     }
@@ -642,6 +653,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (searchInput) {
         searchInput.addEventListener('input', (e) => {
             const searchTerm = e.target.value.toLowerCase().trim();
+            currentPlayerSearch = searchTerm; // Store the search term
             
             if (!searchTerm) {
                 renderPlayers(allPlayers);
