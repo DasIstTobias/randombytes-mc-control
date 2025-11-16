@@ -1,3 +1,103 @@
+// Custom Modal System - Replaces alert(), confirm(), prompt()
+function showCustomModal(title, message, type = 'alert', inputPlaceholder = '') {
+    return new Promise((resolve) => {
+        const overlay = document.getElementById('custom-modal-overlay');
+        const titleEl = document.getElementById('custom-modal-title');
+        const messageEl = document.getElementById('custom-modal-message');
+        const inputContainer = document.getElementById('custom-modal-input-container');
+        const input = document.getElementById('custom-modal-input');
+        const cancelBtn = document.getElementById('custom-modal-cancel');
+        const confirmBtn = document.getElementById('custom-modal-confirm');
+        
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+        
+        // Show/hide input based on type
+        if (type === 'prompt') {
+            inputContainer.style.display = 'block';
+            input.value = '';
+            input.placeholder = inputPlaceholder;
+            input.focus();
+        } else {
+            inputContainer.style.display = 'none';
+        }
+        
+        // Configure buttons based on type
+        if (type === 'alert') {
+            cancelBtn.style.display = 'none';
+            confirmBtn.textContent = 'OK';
+            confirmBtn.className = 'modal-button primary';
+        } else {
+            cancelBtn.style.display = 'inline-block';
+            confirmBtn.textContent = 'Confirm';
+            confirmBtn.className = 'modal-button primary';
+        }
+        
+        // Show modal
+        overlay.style.display = 'flex';
+        
+        // Event handlers
+        const handleConfirm = () => {
+            overlay.style.display = 'none';
+            if (type === 'prompt') {
+                resolve(input.value);
+            } else if (type === 'confirm') {
+                resolve(true);
+            } else {
+                resolve(null);
+            }
+            cleanup();
+        };
+        
+        const handleCancel = () => {
+            overlay.style.display = 'none';
+            if (type === 'prompt') {
+                resolve(null);
+            } else {
+                resolve(false);
+            }
+            cleanup();
+        };
+        
+        const handleKeyPress = (e) => {
+            if (e.key === 'Enter') {
+                handleConfirm();
+            } else if (e.key === 'Escape') {
+                handleCancel();
+            }
+        };
+        
+        const cleanup = () => {
+            confirmBtn.removeEventListener('click', handleConfirm);
+            cancelBtn.removeEventListener('click', handleCancel);
+            if (type === 'prompt') {
+                input.removeEventListener('keypress', handleKeyPress);
+            }
+            document.removeEventListener('keydown', handleKeyPress);
+        };
+        
+        confirmBtn.addEventListener('click', handleConfirm);
+        cancelBtn.addEventListener('click', handleCancel);
+        if (type === 'prompt') {
+            input.addEventListener('keypress', handleKeyPress);
+        }
+        document.addEventListener('keydown', handleKeyPress);
+    });
+}
+
+// Convenience wrappers
+async function customAlert(message) {
+    await showCustomModal('Information', message, 'alert');
+}
+
+async function customConfirm(message) {
+    return await showCustomModal('Confirmation', message, 'confirm');
+}
+
+async function customPrompt(message, placeholder = '') {
+    return await showCustomModal('Input Required', message, 'prompt', placeholder);
+}
+
 // Offline detection
 let isOffline = false;
 let offlineCheckInterval = null;
@@ -287,16 +387,17 @@ function updateMetricsChart(metrics) {
 
 // Shutdown Server
 document.getElementById('shutdown-server-btn').addEventListener('click', async () => {
-    if (!confirm('Are you sure you want to shutdown the server? All players will be disconnected and the server will stop.')) {
+    const confirmed = await customConfirm('Are you sure you want to shutdown the server? All players will be disconnected and the server will stop.');
+    if (!confirmed) {
         return;
     }
     
     try {
         await API.post('/restart', {});
-        alert('Server shutdown initiated.');
+        await customAlert('Server shutdown initiated.');
     } catch (error) {
         console.error('Error shutting down server:', error);
-        alert('Failed to shutdown server: ' + error.message);
+        await customAlert('Failed to shutdown server: ' + error.message);
     }
 });
 
@@ -363,7 +464,7 @@ async function showPlayerInventory(uuid, name) {
         document.getElementById('player-modal').classList.add('active');
     } catch (error) {
         console.error('Error loading player inventory:', error);
-        alert('Failed to load player inventory');
+        await customAlert('Failed to load player inventory');
     }
 }
 
@@ -374,7 +475,7 @@ async function toggleBan(uuid, isBanned) {
         await loadPlayers();
     } catch (error) {
         console.error('Error toggling ban:', error);
-        alert('Failed to ' + (isBanned ? 'unban' : 'ban') + ' player');
+        await customAlert('Failed to ' + (isBanned ? 'unban' : 'ban') + ' player');
     }
 }
 
@@ -385,7 +486,7 @@ async function toggleOp(uuid, isOp) {
         await loadPlayers();
     } catch (error) {
         console.error('Error toggling OP:', error);
-        alert('Failed to ' + (isOp ? 'de-op' : 'op') + ' player');
+        await customAlert('Failed to ' + (isOp ? 'de-op' : 'op') + ' player');
     }
 }
 
@@ -437,7 +538,7 @@ document.getElementById('whitelist-form').addEventListener('submit', async (e) =
         // Fetch UUID from backend (already formatted)
         uuid = await fetchUUID(name);
         if (!uuid) {
-            alert('Could not find UUID for player: ' + name);
+            await customAlert('Could not find UUID for player: ' + name);
             return;
         }
     }
@@ -448,19 +549,20 @@ document.getElementById('whitelist-form').addEventListener('submit', async (e) =
         await updateWhitelist();
     } catch (error) {
         console.error('Error adding to whitelist:', error);
-        alert('Failed to add player to whitelist');
+        await customAlert('Failed to add player to whitelist');
     }
 });
 
 async function removeFromWhitelist(uuid, name) {
-    if (!confirm(`Remove ${name} from whitelist?`)) return;
+    const confirmed = await customConfirm(`Remove ${name} from whitelist?`);
+    if (!confirmed) return;
     
     try {
         await API.delete(`/whitelist/remove?uuid=${uuid}`);
         await updateWhitelist();
     } catch (error) {
         console.error('Error removing from whitelist:', error);
-        alert('Failed to remove player from whitelist');
+        await customAlert('Failed to remove player from whitelist');
     }
 }
 
@@ -512,7 +614,7 @@ document.getElementById('blacklist-form').addEventListener('submit', async (e) =
         // Fetch UUID from backend (already formatted)
         uuid = await fetchUUID(name);
         if (!uuid) {
-            alert('Could not find UUID for player: ' + name);
+            await customAlert('Could not find UUID for player: ' + name);
             return;
         }
     }
@@ -523,19 +625,20 @@ document.getElementById('blacklist-form').addEventListener('submit', async (e) =
         await updateBlacklist();
     } catch (error) {
         console.error('Error adding to blacklist:', error);
-        alert('Failed to add player to blacklist');
+        await customAlert('Failed to add player to blacklist');
     }
 });
 
 async function removeFromBlacklist(uuid, name) {
-    if (!confirm(`Remove ${name} from blacklist?`)) return;
+    const confirmed = await customConfirm(`Remove ${name} from blacklist?`);
+    if (!confirmed) return;
     
     try {
         await API.delete(`/blacklist/remove?uuid=${uuid}`);
         await updateBlacklist();
     } catch (error) {
         console.error('Error removing from blacklist:', error);
-        alert('Failed to remove player from blacklist');
+        await customAlert('Failed to remove player from blacklist');
     }
 }
 
@@ -587,7 +690,7 @@ document.getElementById('ops-form').addEventListener('submit', async (e) => {
         // Fetch UUID from backend (already formatted)
         uuid = await fetchUUID(name);
         if (!uuid) {
-            alert('Could not find UUID for player: ' + name);
+            await customAlert('Could not find UUID for player: ' + name);
             return;
         }
     }
@@ -598,19 +701,20 @@ document.getElementById('ops-form').addEventListener('submit', async (e) => {
         await updateOps();
     } catch (error) {
         console.error('Error adding operator:', error);
-        alert('Failed to add operator');
+        await customAlert('Failed to add operator');
     }
 });
 
 async function removeFromOps(uuid, name) {
-    if (!confirm(`Remove ${name} from operators?`)) return;
+    const confirmed = await customConfirm(`Remove ${name} from operators?`);
+    if (!confirmed) return;
     
     try {
         await API.delete(`/ops/remove?uuid=${uuid}`);
         await updateOps();
     } catch (error) {
         console.error('Error removing operator:', error);
-        alert('Failed to remove operator');
+        await customAlert('Failed to remove operator');
     }
 }
 
@@ -753,7 +857,7 @@ document.getElementById('console-form').addEventListener('submit', async (e) => 
         setTimeout(updateConsole, 500);
     } catch (error) {
         console.error('Error executing command:', error);
-        alert('Failed to execute command');
+        await customAlert('Failed to execute command');
     }
 });
 
@@ -805,7 +909,7 @@ document.getElementById('chat-form').addEventListener('submit', async (e) => {
         setTimeout(updateChat, 500);
     } catch (error) {
         console.error('Error sending chat message:', error);
-        alert('Failed to send message');
+        await customAlert('Failed to send message');
     }
 });
 
@@ -997,10 +1101,10 @@ async function saveServerProperties() {
     
     try {
         await API.post('/settings/properties', { properties });
-        alert('Server properties saved successfully');
+        await customAlert('Server properties saved successfully');
     } catch (error) {
         console.error('Error saving properties:', error);
-        alert('Failed to save server properties');
+        await customAlert('Failed to save server properties');
     }
 }
 
@@ -1018,10 +1122,10 @@ async function saveGameRules() {
     
     try {
         await API.post('/settings/gamerules', { gamerules });
-        alert('Game rules saved successfully');
+        await customAlert('Game rules saved successfully');
     } catch (error) {
         console.error('Error saving game rules:', error);
-        alert('Failed to save game rules');
+        await customAlert('Failed to save game rules');
     }
 }
 
