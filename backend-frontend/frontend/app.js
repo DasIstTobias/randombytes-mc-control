@@ -300,22 +300,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadSidebarServerInfo() {
     try {
-        const [serverData, pluginsData] = await Promise.all([
+        const [serverData, geyserData] = await Promise.all([
             API.get('/server'),
-            API.get('/plugins')
+            API.get('/geysermc')
         ]);
         
         // Store server identity
         serverIdentityData = serverData;
         
         // Check for GeyserMC
-        if (pluginsData.plugins) {
-            const geyser = pluginsData.plugins.find(p => p.name === 'Geyser-Spigot' || p.name === 'GeyserMC');
-            if (geyser) {
-                geyserMCDetected = true;
-                // Try to get GeyserMC port from config (we'll implement this endpoint later if needed)
-                // For now, we'll just show that it's detected
-            }
+        if (geyserData.detected) {
+            geyserMCDetected = true;
+            geyserMCPort = geyserData.bedrockPort || null;
         }
         
         // Populate sidebar
@@ -391,14 +387,13 @@ function updateServerIdentityHeader(serverData) {
     
     // Port and GeyserMC info
     html += `<div class="server-identity-extra">`;
-    html += `<div class="server-identity-port">Port: ${serverData.port}</div>`;
+    html += `<div class="server-identity-port">Java Port: ${serverData.port}</div>`;
     
     if (geyserMCDetected) {
         html += `<div class="server-identity-geyser">`;
-        html += `<h4>GeyserMC</h4>`;
-        html += `<p>Bedrock support enabled</p>`;
+        html += `<span style="color: #4a9; font-weight: bold;">GeyserMC</span>`;
         if (geyserMCPort) {
-            html += `<p>Port: ${geyserMCPort}</p>`;
+            html += ` <span style="color: #999;">Bedrock Port: ${geyserMCPort}</span>`;
         }
         html += `</div>`;
     }
@@ -919,7 +914,11 @@ async function loadPlugins() {
 // Server Info
 async function loadServerInfo() {
     try {
-        const data = await API.get('/server');
+        const [data, geyserData] = await Promise.all([
+            API.get('/server'),
+            API.get('/geysermc')
+        ]);
+        
         const infoContainer = document.getElementById('server-info');
         const worldsContainer = document.getElementById('server-worlds');
         infoContainer.innerHTML = '';
@@ -947,6 +946,29 @@ async function loadServerInfo() {
             'Allow End': data.allowEnd ? 'Yes' : 'No'
         });
         infoContainer.appendChild(settingsCard);
+        
+        // GeyserMC info (if detected)
+        if (geyserData.detected) {
+            const geyserInfo = {
+                'Version': geyserData.version || 'Unknown',
+                'Bedrock Port': geyserData.bedrockPort || 'Not configured'
+            };
+            
+            if (geyserData.bedrockAddress && geyserData.bedrockAddress !== '0.0.0.0') {
+                geyserInfo['Bedrock Address'] = geyserData.bedrockAddress;
+            }
+            
+            if (geyserData.motd1) {
+                geyserInfo['MOTD Line 1'] = geyserData.motd1;
+            }
+            
+            if (geyserData.motd2) {
+                geyserInfo['MOTD Line 2'] = geyserData.motd2;
+            }
+            
+            const geyserCard = createInfoCard('GeyserMC (Bedrock Support)', geyserInfo);
+            infoContainer.appendChild(geyserCard);
+        }
         
         // Worlds
         if (data.worlds && data.worlds.length > 0) {

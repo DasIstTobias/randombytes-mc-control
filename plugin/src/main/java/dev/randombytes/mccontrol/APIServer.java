@@ -49,6 +49,7 @@ public class APIServer {
             server.createContext("/api/plugins", new PluginsHandler());
             server.createContext("/api/server", new ServerInfoHandler());
             server.createContext("/api/server-icon", new ServerIconHandler());
+            server.createContext("/api/geysermc", new GeyserMCHandler());
             server.createContext("/api/console", new ConsoleHandler());
             server.createContext("/api/command", new CommandHandler());
             server.createContext("/api/chat", new ChatHandler());
@@ -477,6 +478,30 @@ public class APIServer {
                 sendResponse(exchange, 200, plugin.getGson().toJson(response));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error getting server icon", e);
+                sendError(exchange, 500, "Internal server error");
+            }
+        }
+    }
+    
+    // GeyserMC handler
+    private class GeyserMCHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!validateAuth(exchange)) {
+                sendError(exchange, 401, "Unauthorized");
+                return;
+            }
+            
+            if (!"GET".equals(exchange.getRequestMethod())) {
+                sendError(exchange, 405, "Method not allowed");
+                return;
+            }
+            
+            try {
+                JsonObject geyserInfo = plugin.getPlayerDataManager().getGeyserMCInfo();
+                sendResponse(exchange, 200, plugin.getGson().toJson(geyserInfo));
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.SEVERE, "Error getting GeyserMC info", e);
                 sendError(exchange, 500, "Internal server error");
             }
         }

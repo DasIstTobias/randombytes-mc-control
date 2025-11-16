@@ -116,6 +116,10 @@ impl PluginClient {
         self.get("/server").await
     }
 
+    pub async fn get_geysermc(&self) -> Result<Value, Box<dyn Error>> {
+        self.get("/geysermc").await
+    }
+
     pub async fn get_console(&self) -> Result<Value, Box<dyn Error>> {
         self.get("/console").await
     }

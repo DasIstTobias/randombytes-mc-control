@@ -20,6 +20,7 @@ use plugin_client::PluginClient;
 #[derive(Clone)]
 struct AppState {
     plugin_client: Arc<RwLock<PluginClient>>,
+    config: Arc<Config>,
 }
 
 #[tokio::main]
@@ -63,7 +64,10 @@ async fn main() {
         }
     };
 
-    let state = AppState { plugin_client };
+    let state = AppState { 
+        plugin_client,
+        config: Arc::new(config),
+    };
 
     // Build application with routes
     let app = Router::new()
@@ -84,6 +88,7 @@ async fn main() {
         .route("/api/plugins", get(get_plugins))
         .route("/api/server", get(get_server_info))
         .route("/api/server-icon", get(get_server_icon))
+        .route("/api/geysermc", get(get_geysermc))
         .route("/api/console", get(get_console))
         .route("/api/command", post(execute_command))
         .route("/api/chat", get(get_chat))
@@ -96,12 +101,12 @@ async fn main() {
         .route("/api/player-head/:uuid", get(get_player_head))
         // Serve frontend
         .nest_service("/", ServeDir::new("frontend"))
-        .with_state(state);
+        .with_state(state.clone());
 
     // Start server
-    let addr = SocketAddr::from(([0, 0, 0, 0], config.backend_port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], state.config.backend_port));
     info!("Backend server listening on http://{}", addr);
-    info!("Open your browser to http://localhost:{}", config.backend_port);
+    info!("Open your browser to http://localhost:{}", state.config.backend_port);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
@@ -241,9 +246,26 @@ async fn get_server_info(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let client = state.plugin_client.read().await;
     match client.get_server_info().await {
-        Ok(info) => Ok(Json(info)),
+        Ok(mut info) => {
+            // Override the IP with the actual server address from config
+            if let Some(obj) = info.as_object_mut() {
+                obj.insert("ip".to_string(), serde_json::Value::String(state.config.plugin_host.clone()));
+            }
+            Ok(Json(info))
+        }
         Err(e) => {
             error!("Failed to get server info: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn get_geysermc(State(state): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.get_geysermc().await {
+        Ok(info) => Ok(Json(info)),
+        Err(e) => {
+            error!("Failed to get GeyserMC info: {}", e);
             Err(ApiError::PluginError(e.to_string()))
         }
     }

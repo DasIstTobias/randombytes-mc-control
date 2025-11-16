@@ -351,6 +351,55 @@ public class PlayerDataManager {
         return result;
     }
     
+    public JsonObject getGeyserMCInfo() {
+        JsonObject result = new JsonObject();
+        result.addProperty("detected", false);
+        
+        // Check if GeyserMC plugin is installed
+        Plugin geyserPlugin = Bukkit.getPluginManager().getPlugin("Geyser-Spigot");
+        if (geyserPlugin == null) {
+            geyserPlugin = Bukkit.getPluginManager().getPlugin("GeyserMC");
+        }
+        
+        if (geyserPlugin != null && geyserPlugin.isEnabled()) {
+            result.addProperty("detected", true);
+            result.addProperty("version", geyserPlugin.getDescription().getVersion());
+            
+            // Try to read GeyserMC config to get Bedrock port
+            File geyserConfigFile = new File(geyserPlugin.getDataFolder(), "config.yml");
+            if (geyserConfigFile.exists()) {
+                try {
+                    org.bukkit.configuration.file.YamlConfiguration config = 
+                        org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(geyserConfigFile);
+                    
+                    // Get Bedrock port (usually under bedrock.port)
+                    int bedrockPort = config.getInt("bedrock.port", 19132);
+                    result.addProperty("bedrockPort", bedrockPort);
+                    
+                    // Get Bedrock address if available
+                    String bedrockAddress = config.getString("bedrock.address", "0.0.0.0");
+                    if (!bedrockAddress.equals("0.0.0.0")) {
+                        result.addProperty("bedrockAddress", bedrockAddress);
+                    }
+                    
+                    // Get MOTD if available
+                    String motd1 = config.getString("bedrock.motd1", "");
+                    String motd2 = config.getString("bedrock.motd2", "");
+                    if (!motd1.isEmpty()) {
+                        result.addProperty("motd1", motd1);
+                    }
+                    if (!motd2.isEmpty()) {
+                        result.addProperty("motd2", motd2);
+                    }
+                } catch (Exception e) {
+                    plugin.getLogger().warning("Failed to read GeyserMC config: " + e.getMessage());
+                }
+            }
+        }
+        
+        return result;
+    }
+    
     public JsonObject getConsoleLogs() {
         JsonObject result = new JsonObject();
         JsonArray logs = new JsonArray();
