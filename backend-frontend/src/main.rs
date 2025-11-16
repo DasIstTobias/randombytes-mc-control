@@ -20,6 +20,7 @@ use plugin_client::PluginClient;
 #[derive(Clone)]
 struct AppState {
     plugin_client: Arc<RwLock<PluginClient>>,
+    config: Arc<Config>,
 }
 
 #[tokio::main]
@@ -63,7 +64,10 @@ async fn main() {
         }
     };
 
-    let state = AppState { plugin_client };
+    let state = AppState { 
+        plugin_client,
+        config: Arc::new(config),
+    };
 
     // Build application with routes
     let app = Router::new()
@@ -74,20 +78,35 @@ async fn main() {
         .route("/api/player/:uuid/action", post(player_action))
         .route("/api/whitelist", get(get_whitelist))
         .route("/api/whitelist/add", post(add_to_whitelist))
+        .route("/api/whitelist/remove", axum::routing::delete(remove_from_whitelist))
         .route("/api/blacklist", get(get_blacklist))
         .route("/api/blacklist/add", post(add_to_blacklist))
+        .route("/api/blacklist/remove", axum::routing::delete(remove_from_blacklist))
+        .route("/api/ops", get(get_ops))
+        .route("/api/ops/add", post(add_to_ops))
+        .route("/api/ops/remove", axum::routing::delete(remove_from_ops))
         .route("/api/plugins", get(get_plugins))
         .route("/api/server", get(get_server_info))
+        .route("/api/server-icon", get(get_server_icon))
+        .route("/api/geysermc", get(get_geysermc))
         .route("/api/console", get(get_console))
         .route("/api/command", post(execute_command))
+        .route("/api/chat", get(get_chat))
+        .route("/api/chat", post(send_chat))
+        .route("/api/settings", get(get_settings))
+        .route("/api/settings/properties", post(update_properties))
+        .route("/api/settings/gamerules", post(update_gamerules))
+        .route("/api/restart", post(restart_server))
+        .route("/api/uuid-lookup", get(uuid_lookup))
+        .route("/api/player-head/:uuid", get(get_player_head))
         // Serve frontend
         .nest_service("/", ServeDir::new("frontend"))
-        .with_state(state);
+        .with_state(state.clone());
 
     // Start server
-    let addr = SocketAddr::from(([0, 0, 0, 0], config.backend_port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], state.config.backend_port));
     info!("Backend server listening on http://{}", addr);
-    info!("Open your browser to http://localhost:{}", config.backend_port);
+    info!("Open your browser to http://localhost:{}", state.config.backend_port);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
@@ -227,9 +246,26 @@ async fn get_server_info(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let client = state.plugin_client.read().await;
     match client.get_server_info().await {
-        Ok(info) => Ok(Json(info)),
+        Ok(mut info) => {
+            // Override the IP with the actual server address from config
+            if let Some(obj) = info.as_object_mut() {
+                obj.insert("ip".to_string(), serde_json::Value::String(state.config.plugin_host.clone()));
+            }
+            Ok(Json(info))
+        }
         Err(e) => {
             error!("Failed to get server info: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn get_geysermc(State(state): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.get_geysermc().await {
+        Ok(info) => Ok(Json(info)),
+        Err(e) => {
+            error!("Failed to get GeyserMC info: {}", e);
             Err(ApiError::PluginError(e.to_string()))
         }
     }
@@ -260,6 +296,304 @@ async fn execute_command(
         Ok(result) => Ok(Json(result)),
         Err(e) => {
             error!("Failed to execute command: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct RemoveQuery {
+    uuid: String,
+}
+
+async fn remove_from_whitelist(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<RemoveQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.remove_from_whitelist(&query.uuid).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to remove from whitelist: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn remove_from_blacklist(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<RemoveQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.remove_from_blacklist(&query.uuid).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to remove from blacklist: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn get_ops(State(state): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.get_ops().await {
+        Ok(ops) => Ok(Json(ops)),
+        Err(e) => {
+            error!("Failed to get ops: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn add_to_ops(
+    State(state): State<AppState>,
+    Json(payload): Json<AddToList>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.add_to_ops(&payload.name, &payload.uuid).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to add to ops: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn remove_from_ops(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<RemoveQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.remove_from_ops(&query.uuid).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to remove from ops: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn get_chat(State(state): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.get_chat().await {
+        Ok(logs) => Ok(Json(logs)),
+        Err(e) => {
+            error!("Failed to get chat: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct ChatMessage {
+    message: String,
+}
+
+async fn send_chat(
+    State(state): State<AppState>,
+    Json(payload): Json<ChatMessage>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.send_chat(&payload.message).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to send chat: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn get_settings(State(state): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.get_settings().await {
+        Ok(settings) => Ok(Json(settings)),
+        Err(e) => {
+            error!("Failed to get settings: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct UpdateProperties {
+    properties: serde_json::Value,
+}
+
+async fn update_properties(
+    State(state): State<AppState>,
+    Json(payload): Json<UpdateProperties>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.update_properties(payload.properties).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to update properties: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct UpdateGamerules {
+    gamerules: serde_json::Value,
+}
+
+async fn update_gamerules(
+    State(state): State<AppState>,
+    Json(payload): Json<UpdateGamerules>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.update_gamerules(payload.gamerules).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to update gamerules: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn restart_server(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.restart_server().await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to restart server: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct UuidLookupQuery {
+    username: String,
+}
+
+async fn uuid_lookup(
+    axum::extract::Query(query): axum::extract::Query<UuidLookupQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    // Fetch UUID from Mojang API
+    let url = format!("https://api.mojang.com/users/profiles/minecraft/{}", query.username);
+    
+    // Create a client that accepts invalid certificates (for self-signed certs in cert chain)
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .map_err(|e| {
+            error!("Failed to build HTTP client: {}", e);
+            ApiError::PluginError("Failed to create HTTP client".to_string())
+        })?;
+    
+    match client.get(&url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                match response.json::<serde_json::Value>().await {
+                    Ok(data) => {
+                        if let Some(id) = data.get("id").and_then(|v| v.as_str()) {
+                            // Format UUID with dashes
+                            let formatted_uuid = format!(
+                                "{}-{}-{}-{}-{}",
+                                &id[0..8],
+                                &id[8..12],
+                                &id[12..16],
+                                &id[16..20],
+                                &id[20..32]
+                            );
+                            Ok(Json(serde_json::json!({
+                                "uuid": formatted_uuid,
+                                "name": data.get("name")
+                            })))
+                        } else {
+                            Err(ApiError::PluginError("Player not found".to_string()))
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to parse Mojang API response: {}", e);
+                        Err(ApiError::PluginError("Failed to parse response".to_string()))
+                    }
+                }
+            } else {
+                Err(ApiError::PluginError("Player not found".to_string()))
+            }
+        }
+        Err(e) => {
+            error!("Failed to fetch UUID from Mojang API: {}", e);
+            Err(ApiError::PluginError("Failed to fetch UUID".to_string()))
+        }
+    }
+}
+
+async fn get_player_head(
+    axum::extract::Path(uuid): axum::extract::Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Remove dashes from UUID
+    let uuid_no_dashes = uuid.replace("-", "");
+    
+    // Fetch player head from Crafatar API
+    let url = format!("https://crafatar.com/avatars/{}?size=24&overlay", uuid_no_dashes);
+    
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .map_err(|e| {
+            error!("Failed to build HTTP client: {}", e);
+            ApiError::PluginError("Failed to create HTTP client".to_string())
+        })?;
+    
+    match client.get(&url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                match response.bytes().await {
+                    Ok(bytes) => {
+                        // Return image with proper content type
+                        Ok((
+                            StatusCode::OK,
+                            [(axum::http::header::CONTENT_TYPE, "image/png")],
+                            bytes
+                        ))
+                    }
+                    Err(e) => {
+                        error!("Failed to read player head image: {}", e);
+                        Err(ApiError::PluginError("Failed to read image".to_string()))
+                    }
+                }
+            } else {
+                Err(ApiError::PluginError("Player head not found".to_string()))
+            }
+        }
+        Err(e) => {
+            error!("Failed to fetch player head from Crafatar: {}", e);
+            Err(ApiError::PluginError("Failed to fetch player head".to_string()))
+        }
+    }
+}
+
+async fn get_server_icon(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, ApiError> {
+    let client = state.plugin_client.read().await;
+    
+    match client.get_server_icon().await {
+        Ok(response) => {
+            if let Some(icon_data) = response.get("icon") {
+                if let Some(icon_str) = icon_data.as_str() {
+                    // Icon data is base64 encoded PNG
+                    use base64::Engine;
+                    if let Ok(icon_bytes) = base64::engine::general_purpose::STANDARD.decode(icon_str) {
+                        return Ok((
+                            StatusCode::OK,
+                            [(axum::http::header::CONTENT_TYPE, "image/png")],
+                            icon_bytes
+                        ));
+                    }
+                }
+            }
+            // Return 404 if no icon available
+            Err(ApiError::PluginError("Server icon not available".to_string()))
+        }
+        Err(e) => {
+            error!("Failed to fetch server icon: {}", e);
             Err(ApiError::PluginError(e.to_string()))
         }
     }

@@ -18,18 +18,59 @@ public class PlayerDataManager {
     private final MCControlPlugin plugin;
     private final Map<UUID, PlayerData> playerDataCache;
     private final List<String> consoleLogBuffer;
+    private final List<String> chatLogBuffer;
     private final int maxLogLines = 1000;
     
     public PlayerDataManager(MCControlPlugin plugin) {
         this.plugin = plugin;
         this.playerDataCache = new ConcurrentHashMap<>();
         this.consoleLogBuffer = Collections.synchronizedList(new ArrayList<>());
+        this.chatLogBuffer = Collections.synchronizedList(new ArrayList<>());
         
         // Register event listeners
         Bukkit.getPluginManager().registerEvents(new PlayerTrackingListener(this), plugin);
         
         // Load existing player data
         loadPlayerData();
+        
+        // Start inventory caching task (every 10 seconds = 200 ticks)
+        startInventoryCaching();
+    }
+    
+    private void startInventoryCaching() {
+        Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, () -> {
+            cacheOnlinePlayerInventories();
+        }, 200L, 200L); // Start after 10 seconds, repeat every 10 seconds
+    }
+    
+    private void cacheOnlinePlayerInventories() {
+        try {
+            // Create cache directory if it doesn't exist
+            File cacheDir = new File(plugin.getDataFolder().getParentFile().getParentFile(), "cache/inventories");
+            if (!cacheDir.exists()) {
+                cacheDir.mkdirs();
+            }
+            
+            // Cache inventory for each online player
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                try {
+                    JsonObject cached = new JsonObject();
+                    cached.addProperty("uuid", player.getUniqueId().toString());
+                    cached.addProperty("name", player.getName());
+                    cached.addProperty("timestamp", System.currentTimeMillis());
+                    cached.add("inventory", getPlayerInventory(player));
+                    
+                    File cacheFile = new File(cacheDir, player.getUniqueId().toString() + ".json");
+                    try (FileWriter writer = new FileWriter(cacheFile)) {
+                        plugin.getGson().toJson(cached, writer);
+                    }
+                } catch (IOException e) {
+                    plugin.getLogger().warning("Failed to cache inventory for " + player.getName() + ": " + e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("Error in inventory caching task: " + e.getMessage());
+        }
     }
     
     private void loadPlayerData() {
@@ -64,6 +105,11 @@ public class PlayerDataManager {
             playerObj.addProperty("lastSeen", data.lastSeen);
             playerObj.addProperty("playTime", data.playTime);
             playerObj.addProperty("banned", data.isBanned);
+            
+            // Add OP status
+            OfflinePlayer player = Bukkit.getOfflinePlayer(data.uuid);
+            playerObj.addProperty("op", player.isOp());
+            
             players.add(playerObj);
         }
         
@@ -93,6 +139,13 @@ public class PlayerDataManager {
             if (player != null && player.isOnline()) {
                 JsonArray inventory = getPlayerInventory(player);
                 result.add("inventory", inventory);
+            } else {
+                // Try to load cached inventory
+                JsonArray cachedInventory = loadCachedInventory(uuid);
+                if (cachedInventory != null) {
+                    result.add("inventory", cachedInventory);
+                    result.addProperty("cached", true);
+                }
             }
             
             return result;
@@ -130,6 +183,25 @@ public class PlayerDataManager {
             .collect(Collectors.joining(" "));
     }
     
+    private JsonArray loadCachedInventory(UUID uuid) {
+        try {
+            File cacheDir = new File(plugin.getDataFolder().getParentFile().getParentFile(), "cache/inventories");
+            File cacheFile = new File(cacheDir, uuid.toString() + ".json");
+            
+            if (!cacheFile.exists()) {
+                return null;
+            }
+            
+            try (FileReader reader = new FileReader(cacheFile)) {
+                JsonObject cached = plugin.getGson().fromJson(reader, JsonObject.class);
+                return cached.getAsJsonArray("inventory");
+            }
+        } catch (Exception e) {
+            plugin.getLogger().fine("Could not load cached inventory for " + uuid + ": " + e.getMessage());
+            return null;
+        }
+    }
+    
     public void performPlayerAction(String uuidStr, String action) {
         try {
             UUID uuid = UUID.fromString(uuidStr);
@@ -144,7 +216,9 @@ public class PlayerDataManager {
                     }
                     break;
                 case "unban":
-                    player.ban(null, (Date) null, null);
+                    player.setWhitelisted(false);
+                    Bukkit.getBanList(BanList.Type.NAME).pardon(player.getName());
+                    Bukkit.getBanList(BanList.Type.IP).pardon(player.getName());
                     PlayerData data2 = playerDataCache.get(uuid);
                     if (data2 != null) {
                         data2.isBanned = false;
@@ -155,6 +229,12 @@ public class PlayerDataManager {
                     if (onlinePlayer != null && onlinePlayer.isOnline()) {
                         onlinePlayer.kickPlayer("Kicked via MC Control");
                     }
+                    break;
+                case "op":
+                    player.setOp(true);
+                    break;
+                case "deop":
+                    player.setOp(false);
                     break;
             }
         } catch (IllegalArgumentException e) {
@@ -271,6 +351,55 @@ public class PlayerDataManager {
         return result;
     }
     
+    public JsonObject getGeyserMCInfo() {
+        JsonObject result = new JsonObject();
+        result.addProperty("detected", false);
+        
+        // Check if GeyserMC plugin is installed
+        Plugin geyserPlugin = Bukkit.getPluginManager().getPlugin("Geyser-Spigot");
+        if (geyserPlugin == null) {
+            geyserPlugin = Bukkit.getPluginManager().getPlugin("GeyserMC");
+        }
+        
+        if (geyserPlugin != null && geyserPlugin.isEnabled()) {
+            result.addProperty("detected", true);
+            result.addProperty("version", geyserPlugin.getDescription().getVersion());
+            
+            // Try to read GeyserMC config to get Bedrock port
+            File geyserConfigFile = new File(geyserPlugin.getDataFolder(), "config.yml");
+            if (geyserConfigFile.exists()) {
+                try {
+                    org.bukkit.configuration.file.YamlConfiguration config = 
+                        org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(geyserConfigFile);
+                    
+                    // Get Bedrock port (usually under bedrock.port)
+                    int bedrockPort = config.getInt("bedrock.port", 19132);
+                    result.addProperty("bedrockPort", bedrockPort);
+                    
+                    // Get Bedrock address if available
+                    String bedrockAddress = config.getString("bedrock.address", "0.0.0.0");
+                    if (!bedrockAddress.equals("0.0.0.0")) {
+                        result.addProperty("bedrockAddress", bedrockAddress);
+                    }
+                    
+                    // Get MOTD if available
+                    String motd1 = config.getString("bedrock.motd1", "");
+                    String motd2 = config.getString("bedrock.motd2", "");
+                    if (!motd1.isEmpty()) {
+                        result.addProperty("motd1", motd1);
+                    }
+                    if (!motd2.isEmpty()) {
+                        result.addProperty("motd2", motd2);
+                    }
+                } catch (Exception e) {
+                    plugin.getLogger().warning("Failed to read GeyserMC config: " + e.getMessage());
+                }
+            }
+        }
+        
+        return result;
+    }
+    
     public JsonObject getConsoleLogs() {
         JsonObject result = new JsonObject();
         JsonArray logs = new JsonArray();
@@ -290,6 +419,170 @@ public class PlayerDataManager {
             consoleLogBuffer.add(message);
             if (consoleLogBuffer.size() > maxLogLines) {
                 consoleLogBuffer.remove(0);
+            }
+        }
+    }
+    
+    public void removeFromWhitelist(String uuidStr) {
+        try {
+            UUID uuid = UUID.fromString(uuidStr);
+            OfflinePlayer player = Bukkit.getOfflinePlayer(uuid);
+            player.setWhitelisted(false);
+        } catch (IllegalArgumentException e) {
+            plugin.getLogger().warning("Invalid UUID for whitelist removal: " + uuidStr);
+        }
+    }
+    
+    public void removeFromBlacklist(String uuidStr) {
+        try {
+            UUID uuid = UUID.fromString(uuidStr);
+            OfflinePlayer player = Bukkit.getOfflinePlayer(uuid);
+            Bukkit.getBanList(BanList.Type.NAME).pardon(player.getName());
+            Bukkit.getBanList(BanList.Type.IP).pardon(player.getName());
+            
+            PlayerData data = playerDataCache.get(uuid);
+            if (data != null) {
+                data.isBanned = false;
+            }
+        } catch (IllegalArgumentException e) {
+            plugin.getLogger().warning("Invalid UUID for blacklist removal: " + uuidStr);
+        }
+    }
+    
+    public JsonObject getOps() {
+        JsonObject result = new JsonObject();
+        JsonArray ops = new JsonArray();
+        
+        for (OfflinePlayer player : Bukkit.getOperators()) {
+            JsonObject entry = new JsonObject();
+            entry.addProperty("name", player.getName());
+            entry.addProperty("uuid", player.getUniqueId().toString());
+            ops.add(entry);
+        }
+        
+        result.add("ops", ops);
+        return result;
+    }
+    
+    public void addToOps(String name, String uuidStr) {
+        try {
+            UUID uuid = UUID.fromString(uuidStr);
+            OfflinePlayer player = Bukkit.getOfflinePlayer(uuid);
+            player.setOp(true);
+        } catch (IllegalArgumentException e) {
+            plugin.getLogger().warning("Invalid UUID for ops: " + uuidStr);
+        }
+    }
+    
+    public void removeFromOps(String uuidStr) {
+        try {
+            UUID uuid = UUID.fromString(uuidStr);
+            OfflinePlayer player = Bukkit.getOfflinePlayer(uuid);
+            player.setOp(false);
+        } catch (IllegalArgumentException e) {
+            plugin.getLogger().warning("Invalid UUID for ops removal: " + uuidStr);
+        }
+    }
+    
+    public JsonObject getChatLogs() {
+        JsonObject result = new JsonObject();
+        JsonArray logs = new JsonArray();
+        
+        synchronized (chatLogBuffer) {
+            for (String log : chatLogBuffer) {
+                logs.add(log);
+            }
+        }
+        
+        result.add("logs", logs);
+        return result;
+    }
+    
+    public void addChatLog(String message) {
+        synchronized (chatLogBuffer) {
+            chatLogBuffer.add(message);
+            if (chatLogBuffer.size() > maxLogLines) {
+                chatLogBuffer.remove(0);
+            }
+        }
+    }
+    
+    public void sendChatMessage(String message) {
+        if (message.startsWith("/")) {
+            // Execute command
+            String command = message.substring(1);
+            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+            addChatLog("[Server executed: " + message + "]");
+        } else {
+            // Broadcast message as Server
+            Bukkit.broadcastMessage("§e[Server]§f " + message);
+            addChatLog("[Server] " + message);
+        }
+    }
+    
+    public JsonObject getSettings() {
+        JsonObject result = new JsonObject();
+        JsonObject properties = new JsonObject();
+        JsonObject gamerules = new JsonObject();
+        
+        // Get some common server properties
+        properties.addProperty("motd", Bukkit.getMotd());
+        properties.addProperty("max-players", Bukkit.getMaxPlayers());
+        properties.addProperty("online-mode", Bukkit.getOnlineMode());
+        properties.addProperty("allow-flight", Bukkit.getAllowFlight());
+        properties.addProperty("allow-nether", Bukkit.getAllowNether());
+        properties.addProperty("allow-end", Bukkit.getAllowEnd());
+        properties.addProperty("difficulty", Bukkit.getWorlds().get(0).getDifficulty().toString());
+        properties.addProperty("whitelist", Bukkit.hasWhitelist());
+        
+        // Get game rules from the main world
+        World mainWorld = Bukkit.getWorlds().get(0);
+        for (GameRule<?> rule : GameRule.values()) {
+            try {
+                Object value = mainWorld.getGameRuleValue(rule);
+                if (value != null) {
+                    gamerules.addProperty(rule.getName(), value.toString());
+                }
+            } catch (IllegalArgumentException e) {
+                // Skip gamerules that are not available in this server version
+                plugin.getLogger().fine("GameRule '" + rule.getName() + "' is not available, skipping");
+            }
+        }
+        
+        result.add("properties", properties);
+        result.add("gamerules", gamerules);
+        return result;
+    }
+    
+    public void updateServerProperties(JsonObject properties) {
+        // Note: Most server properties require server restart to take effect
+        // We can only change a few at runtime
+        if (properties.has("motd")) {
+            // Cannot set MOTD at runtime without reflection or server.properties edit
+            plugin.getLogger().info("MOTD change requires server restart");
+        }
+        if (properties.has("whitelist")) {
+            Bukkit.setWhitelist(properties.get("whitelist").getAsBoolean());
+        }
+        plugin.getLogger().info("Most server properties require restart to take effect");
+    }
+    
+    public void updateGameRules(JsonObject gamerules) {
+        World mainWorld = Bukkit.getWorlds().get(0);
+        
+        for (String key : gamerules.keySet()) {
+            String value = gamerules.get(key).getAsString();
+            
+            // Try to set the game rule
+            for (GameRule<?> rule : GameRule.values()) {
+                if (rule.getName().equals(key)) {
+                    if (rule.getType() == Boolean.class) {
+                        mainWorld.setGameRule((GameRule<Boolean>) rule, Boolean.parseBoolean(value));
+                    } else if (rule.getType() == Integer.class) {
+                        mainWorld.setGameRule((GameRule<Integer>) rule, Integer.parseInt(value));
+                    }
+                    break;
+                }
             }
         }
     }

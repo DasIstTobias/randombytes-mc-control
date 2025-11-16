@@ -116,6 +116,10 @@ impl PluginClient {
         self.get("/server").await
     }
 
+    pub async fn get_geysermc(&self) -> Result<Value, Box<dyn Error>> {
+        self.get("/geysermc").await
+    }
+
     pub async fn get_console(&self) -> Result<Value, Box<dyn Error>> {
         self.get("/console").await
     }
@@ -125,5 +129,105 @@ impl PluginClient {
             "command": command
         });
         self.post("/command", body).await
+    }
+
+    pub async fn remove_from_whitelist(&self, uuid: &str) -> Result<Value, Box<dyn Error>> {
+        let endpoint = format!("/whitelist?uuid={}", uuid);
+        let url = format!("{}{}", self.base_url, endpoint);
+        let response = self
+            .client
+            .delete(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(format!("Request failed: {}", response.status()).into());
+        }
+
+        Ok(response.json().await?)
+    }
+
+    pub async fn remove_from_blacklist(&self, uuid: &str) -> Result<Value, Box<dyn Error>> {
+        let endpoint = format!("/blacklist?uuid={}", uuid);
+        let url = format!("{}{}", self.base_url, endpoint);
+        let response = self
+            .client
+            .delete(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(format!("Request failed: {}", response.status()).into());
+        }
+
+        Ok(response.json().await?)
+    }
+
+    pub async fn get_ops(&self) -> Result<Value, Box<dyn Error>> {
+        self.get("/ops").await
+    }
+
+    pub async fn add_to_ops(&self, name: &str, uuid: &str) -> Result<Value, Box<dyn Error>> {
+        let body = serde_json::json!({
+            "name": name,
+            "uuid": uuid
+        });
+        self.post("/ops", body).await
+    }
+
+    pub async fn remove_from_ops(&self, uuid: &str) -> Result<Value, Box<dyn Error>> {
+        let endpoint = format!("/ops?uuid={}", uuid);
+        let url = format!("{}{}", self.base_url, endpoint);
+        let response = self
+            .client
+            .delete(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(format!("Request failed: {}", response.status()).into());
+        }
+
+        Ok(response.json().await?)
+    }
+
+    pub async fn get_chat(&self) -> Result<Value, Box<dyn Error>> {
+        self.get("/chat").await
+    }
+
+    pub async fn send_chat(&self, message: &str) -> Result<Value, Box<dyn Error>> {
+        let body = serde_json::json!({
+            "message": message
+        });
+        self.post("/chat", body).await
+    }
+
+    pub async fn get_settings(&self) -> Result<Value, Box<dyn Error>> {
+        self.get("/settings").await
+    }
+
+    pub async fn update_properties(&self, properties: Value) -> Result<Value, Box<dyn Error>> {
+        let body = serde_json::json!({
+            "properties": properties
+        });
+        self.post("/settings/properties", body).await
+    }
+
+    pub async fn update_gamerules(&self, gamerules: Value) -> Result<Value, Box<dyn Error>> {
+        let body = serde_json::json!({
+            "gamerules": gamerules
+        });
+        self.post("/settings/gamerules", body).await
+    }
+
+    pub async fn restart_server(&self) -> Result<Value, Box<dyn Error>> {
+        self.post("/restart", serde_json::json!({})).await
+    }
+    
+    pub async fn get_server_icon(&self) -> Result<Value, Box<dyn Error>> {
+        self.get("/server-icon").await
     }
 }

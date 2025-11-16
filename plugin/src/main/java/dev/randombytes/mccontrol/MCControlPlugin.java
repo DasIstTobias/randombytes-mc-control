@@ -47,6 +47,9 @@ public class MCControlPlugin extends JavaPlugin {
         metricsCollector = new MetricsCollector(this);
         playerDataManager = new PlayerDataManager(this);
         
+        // Attach console log handler to capture server logs
+        attachConsoleLogHandler();
+        
         // Start API server
         apiServer = new APIServer(this, port, apiKey, keyPair);
         apiServer.start();
@@ -163,5 +166,38 @@ public class MCControlPlugin extends JavaPlugin {
     
     public PlayerDataManager getPlayerDataManager() {
         return playerDataManager;
+    }
+    
+    private void attachConsoleLogHandler() {
+        // Attach a custom handler to the root logger to capture all console output
+        java.util.logging.Logger rootLogger = java.util.logging.Logger.getLogger("");
+        rootLogger.addHandler(new java.util.logging.Handler() {
+            @Override
+            public void publish(java.util.logging.LogRecord record) {
+                if (playerDataManager != null) {
+                    // Format log message similar to server console output
+                    String timestamp = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date(record.getMillis()));
+                    String threadName = record.getLoggerName().contains("Server") ? "Server thread" : Thread.currentThread().getName();
+                    String level = record.getLevel().getName();
+                    String message = record.getMessage();
+                    
+                    // Format as: [timestamp] [thread/level]: message
+                    String formattedLog = String.format("[%s] [%s/%s]: %s", 
+                        timestamp, threadName, level, message);
+                    
+                    playerDataManager.addConsoleLog(formattedLog);
+                }
+            }
+            
+            @Override
+            public void flush() {
+                // Not needed
+            }
+            
+            @Override
+            public void close() throws SecurityException {
+                // Not needed
+            }
+        });
     }
 }

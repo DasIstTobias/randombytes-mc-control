@@ -1,21 +1,201 @@
+// Custom Modal System - Replaces alert(), confirm(), prompt()
+function showCustomModal(title, message, type = 'alert', inputPlaceholder = '') {
+    return new Promise((resolve) => {
+        const overlay = document.getElementById('custom-modal-overlay');
+        const titleEl = document.getElementById('custom-modal-title');
+        const messageEl = document.getElementById('custom-modal-message');
+        const inputContainer = document.getElementById('custom-modal-input-container');
+        const input = document.getElementById('custom-modal-input');
+        const cancelBtn = document.getElementById('custom-modal-cancel');
+        const confirmBtn = document.getElementById('custom-modal-confirm');
+        
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+        
+        // Show/hide input based on type
+        if (type === 'prompt') {
+            inputContainer.style.display = 'block';
+            input.value = '';
+            input.placeholder = inputPlaceholder;
+            input.focus();
+        } else {
+            inputContainer.style.display = 'none';
+        }
+        
+        // Configure buttons based on type
+        if (type === 'alert') {
+            cancelBtn.style.display = 'none';
+            confirmBtn.textContent = 'OK';
+            confirmBtn.className = 'modal-button primary';
+        } else {
+            cancelBtn.style.display = 'inline-block';
+            confirmBtn.textContent = 'Confirm';
+            confirmBtn.className = 'modal-button primary';
+        }
+        
+        // Show modal
+        overlay.style.display = 'flex';
+        
+        // Event handlers
+        const handleConfirm = () => {
+            overlay.style.display = 'none';
+            if (type === 'prompt') {
+                resolve(input.value);
+            } else if (type === 'confirm') {
+                resolve(true);
+            } else {
+                resolve(null);
+            }
+            cleanup();
+        };
+        
+        const handleCancel = () => {
+            overlay.style.display = 'none';
+            if (type === 'prompt') {
+                resolve(null);
+            } else {
+                resolve(false);
+            }
+            cleanup();
+        };
+        
+        const handleKeyPress = (e) => {
+            if (e.key === 'Enter') {
+                handleConfirm();
+            } else if (e.key === 'Escape') {
+                handleCancel();
+            }
+        };
+        
+        const cleanup = () => {
+            confirmBtn.removeEventListener('click', handleConfirm);
+            cancelBtn.removeEventListener('click', handleCancel);
+            if (type === 'prompt') {
+                input.removeEventListener('keypress', handleKeyPress);
+            }
+            document.removeEventListener('keydown', handleKeyPress);
+        };
+        
+        confirmBtn.addEventListener('click', handleConfirm);
+        cancelBtn.addEventListener('click', handleCancel);
+        if (type === 'prompt') {
+            input.addEventListener('keypress', handleKeyPress);
+        }
+        document.addEventListener('keydown', handleKeyPress);
+    });
+}
+
+// Convenience wrappers
+async function customAlert(message) {
+    await showCustomModal('Information', message, 'alert');
+}
+
+async function customConfirm(message) {
+    return await showCustomModal('Confirmation', message, 'confirm');
+}
+
+async function customPrompt(message, placeholder = '') {
+    return await showCustomModal('Input Required', message, 'prompt', placeholder);
+}
+
+// Offline detection
+let isOffline = false;
+let offlineCheckInterval = null;
+
+function showOfflineOverlay() {
+    if (!isOffline) {
+        isOffline = true;
+        document.getElementById('offline-overlay').style.display = 'flex';
+    }
+}
+
+function hideOfflineOverlay() {
+    if (isOffline) {
+        isOffline = false;
+        document.getElementById('offline-overlay').style.display = 'none';
+    }
+}
+
+function startOfflineCheck() {
+    // Check connection every 5 seconds
+    offlineCheckInterval = setInterval(async () => {
+        try {
+            const response = await fetch('/api/server', { method: 'HEAD' });
+            if (response.ok) {
+                hideOfflineOverlay();
+            } else {
+                showOfflineOverlay();
+            }
+        } catch (error) {
+            showOfflineOverlay();
+        }
+    }, 5000);
+}
+
 // API Client
 const API = {
     async get(endpoint) {
-        const response = await fetch(`/api${endpoint}`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        return response.json();
+        try {
+            const response = await fetch(`/api${endpoint}`);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            hideOfflineOverlay();
+            return response.json();
+        } catch (error) {
+            showOfflineOverlay();
+            throw error;
+        }
     },
 
     async post(endpoint, data) {
-        const response = await fetch(`/api${endpoint}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        return response.json();
+        try {
+            const response = await fetch(`/api${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            hideOfflineOverlay();
+            return response.json();
+        } catch (error) {
+            showOfflineOverlay();
+            throw error;
+        }
+    },
+
+    async delete(endpoint) {
+        try {
+            const response = await fetch(`/api${endpoint}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            hideOfflineOverlay();
+            return response.json();
+        } catch (error) {
+            showOfflineOverlay();
+            throw error;
+        }
     }
 };
+
+// UUID lookup via backend (to avoid CORS issues)
+async function fetchUUID(username) {
+    try {
+        const response = await fetch(`/api/uuid-lookup?username=${encodeURIComponent(username)}`);
+        if (!response.ok) return null;
+        const data = await response.json();
+        return data.uuid; // Already formatted with dashes
+    } catch (error) {
+        console.error('Failed to fetch UUID:', error);
+        return null;
+    }
+}
+
+// Format UUID with dashes
+function formatUUID(uuid) {
+    if (!uuid || uuid.length !== 32) return uuid;
+    return `${uuid.slice(0, 8)}-${uuid.slice(8, 12)}-${uuid.slice(12, 16)}-${uuid.slice(16, 20)}-${uuid.slice(20)}`;
+}
 
 // Navigation
 document.querySelectorAll('.nav-link').forEach(link => {
@@ -37,14 +217,28 @@ document.querySelectorAll('.nav-link').forEach(link => {
 });
 
 // Page loaders
+let currentPage = 'status';
+let pageRefreshInterval = null;
+
 async function loadPage(page) {
+    // Clear any existing refresh interval
+    if (pageRefreshInterval) {
+        clearInterval(pageRefreshInterval);
+        pageRefreshInterval = null;
+    }
+    
+    currentPage = page;
+    
     try {
         switch(page) {
+            case 'status':
             case 'metrics':
-                await loadMetrics();
+                await loadStatus();
                 break;
             case 'players':
                 await loadPlayers();
+                // Auto-refresh every second
+                pageRefreshInterval = setInterval(loadPlayers, 1000);
                 break;
             case 'whitelist':
                 await loadWhitelist();
@@ -52,14 +246,27 @@ async function loadPage(page) {
             case 'blacklist':
                 await loadBlacklist();
                 break;
+            case 'ops':
+                await loadOps();
+                break;
             case 'plugins':
                 await loadPlugins();
+                // Auto-refresh every second
+                pageRefreshInterval = setInterval(loadPlugins, 1000);
                 break;
             case 'server':
                 await loadServerInfo();
+                // Auto-refresh every second
+                pageRefreshInterval = setInterval(loadServerInfo, 1000);
                 break;
             case 'console':
                 await loadConsole();
+                break;
+            case 'chat':
+                await loadChat();
+                break;
+            case 'settings':
+                await loadSettings();
                 break;
         }
     } catch (error) {
@@ -67,42 +274,137 @@ async function loadPage(page) {
     }
 }
 
-// Metrics
-let metricsChart;
-let metricsInterval;
+// Status (formerly Metrics)
+let statusInterval;
 
-async function loadMetrics() {
+async function loadStatus() {
     // Clear existing interval
-    if (metricsInterval) clearInterval(metricsInterval);
+    if (statusInterval) clearInterval(statusInterval);
     
     // Load initial data
-    await updateMetrics();
+    await updateStatus();
     
     // Update every 2 seconds
-    metricsInterval = setInterval(updateMetrics, 2000);
+    statusInterval = setInterval(updateStatus, 2000);
 }
 
-async function updateMetrics() {
+let maxPlayers = 20; // Default value, will be updated from server info
+let serverIdentityData = null; // Store server identity data
+let geyserMCDetected = false;
+let geyserMCPort = null;
+
+// Load sidebar server info on page load
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadSidebarServerInfo();
+});
+
+async function loadSidebarServerInfo() {
     try {
-        const data = await API.get('/metrics');
+        const [serverData, geyserData] = await Promise.all([
+            API.get('/server'),
+            API.get('/geysermc')
+        ]);
         
-        if (data.metrics && data.metrics.length > 0) {
-            const latest = data.metrics[data.metrics.length - 1];
+        // Store server identity
+        serverIdentityData = serverData;
+        
+        // Check for GeyserMC
+        if (geyserData.detected) {
+            geyserMCDetected = true;
+            geyserMCPort = geyserData.bedrockPort || null;
+        }
+        
+        // Populate sidebar
+        const sidebarInfo = document.getElementById('sidebar-server-info');
+        if (serverData) {
+            let html = '';
+            
+            // Try to load server icon
+            html += `<img src="/api/server-icon" alt="Server Icon" onerror="this.style.display='none'">`;
+            
+            html += `<div class="sidebar-server-details">`;
+            html += `<div class="server-address">${escapeHtml(serverData.ip || 'localhost')}</div>`;
+            html += `<div class="server-port">Port: ${serverData.port}</div>`;
+            html += `</div>`;
+            
+            sidebarInfo.innerHTML = html;
+            sidebarInfo.style.display = 'flex';
+        }
+    } catch (error) {
+        console.error('Error loading sidebar server info:', error);
+    }
+}
+
+async function updateStatus() {
+    try {
+        const [metricsData, serverData] = await Promise.all([
+            API.get('/metrics'),
+            API.get('/server')
+        ]);
+        
+        if (metricsData.metrics && metricsData.metrics.length > 0) {
+            const latest = metricsData.metrics[metricsData.metrics.length - 1];
             
             document.getElementById('current-players').textContent = latest.players || 0;
             document.getElementById('current-tps').textContent = (latest.tps || 0).toFixed(1);
             document.getElementById('current-memory').textContent = (latest.memory || 0).toFixed(1) + '%';
             document.getElementById('current-cpu').textContent = (latest.cpu || 0).toFixed(1) + '%';
             
+            // Update max players from server info
+            if (serverData && serverData.maxPlayers) {
+                maxPlayers = serverData.maxPlayers;
+            }
+            
+            // Update server identity header if not yet displayed
+            if (serverData && serverIdentityData) {
+                updateServerIdentityHeader(serverData);
+            }
+            
             // Update chart
-            updateMetricsChart(data.metrics);
+            updateMetricsChart(metricsData.metrics, maxPlayers);
         }
     } catch (error) {
-        console.error('Error updating metrics:', error);
+        console.error('Error updating status:', error);
     }
 }
 
-function updateMetricsChart(metrics) {
+function updateServerIdentityHeader(serverData) {
+    const identityDiv = document.getElementById('server-identity');
+    if (!identityDiv || identityDiv.style.display === 'flex') {
+        return; // Already displayed
+    }
+    
+    let html = '';
+    
+    // Server icon
+    html += `<img src="/api/server-icon" alt="Server Icon" onerror="this.style.display='none'">`;
+    
+    // Main server info
+    html += `<div class="server-identity-main">`;
+    html += `<div class="server-identity-address">${escapeHtml(serverData.ip || 'localhost')}</div>`;
+    html += `<div class="server-identity-motd">${escapeHtml(serverData.motd || 'A Minecraft Server')}</div>`;
+    html += `</div>`;
+    
+    // Port and GeyserMC info
+    html += `<div class="server-identity-extra">`;
+    html += `<div class="server-identity-port">Java Port: ${serverData.port}</div>`;
+    
+    if (geyserMCDetected) {
+        html += `<div class="server-identity-geyser">`;
+        html += `<span style="color: #4a9; font-weight: bold;">GeyserMC</span>`;
+        if (geyserMCPort) {
+            html += ` <span style="color: #999;">Bedrock Port: ${geyserMCPort}</span>`;
+        }
+        html += `</div>`;
+    }
+    
+    html += `</div>`;
+    
+    identityDiv.innerHTML = html;
+    identityDiv.style.display = 'flex';
+}
+
+function updateMetricsChart(metrics, maxPlayerCount) {
     const canvas = document.getElementById('metricsChart');
     const ctx = canvas.getContext('2d');
     
@@ -111,10 +413,12 @@ function updateMetricsChart(metrics) {
     canvas.height = canvas.offsetHeight;
     
     const width = canvas.width;
-    const height = canvas.height;
-    const padding = 40;
-    const graphWidth = width - padding * 2;
-    const graphHeight = height - padding * 2;
+    const height = canvas.offsetHeight;
+    const padding = 60; // Space for labels
+    const paddingRight = 70; // Extra space for player count axis
+    const paddingBottom = 50; // Extra space for time axis
+    const graphWidth = width - padding - paddingRight;
+    const graphHeight = height - padding - paddingBottom;
     
     ctx.clearRect(0, 0, width, height);
     
@@ -123,20 +427,69 @@ function updateMetricsChart(metrics) {
     // Find max values
     const maxTPS = 20;
     const maxMemory = 100;
+    const maxCPU = 100;
     
-    // Draw grid
-    ctx.strokeStyle = '#e0e0e0';
+    // Set font for labels
+    ctx.font = '11px monospace';
+    ctx.fillStyle = '#999';
+    
+    // Draw grid and percentage labels (left axis)
+    ctx.strokeStyle = '#333';
     ctx.lineWidth = 1;
     for (let i = 0; i <= 5; i++) {
         const y = padding + (graphHeight / 5) * i;
+        const percentage = 100 - (i * 20); // 100%, 80%, 60%, 40%, 20%, 0%
+        
+        // Draw grid line
         ctx.beginPath();
         ctx.moveTo(padding, y);
-        ctx.lineTo(width - padding, y);
+        ctx.lineTo(padding + graphWidth, y);
         ctx.stroke();
+        
+        // Draw percentage label on left
+        ctx.textAlign = 'right';
+        ctx.fillText(`${percentage}%`, padding - 10, y + 4);
     }
     
-    // Draw TPS line
-    ctx.strokeStyle = '#3498db';
+    // Draw player count axis labels (right side)
+    ctx.fillStyle = '#4af';
+    for (let i = 0; i <= 5; i++) {
+        const y = padding + (graphHeight / 5) * i;
+        const playerValue = Math.round(maxPlayerCount - (i * maxPlayerCount / 5));
+        
+        ctx.textAlign = 'left';
+        ctx.fillText(`${playerValue}`, padding + graphWidth + 10, y + 4);
+    }
+    
+    // Draw time axis labels (bottom)
+    const now = Date.now();
+    const oldest = metrics[0].timestamp;
+    const duration = now - oldest;
+    const minutes = Math.ceil(duration / 60000);
+    
+    ctx.fillStyle = '#999';
+    ctx.textAlign = 'center';
+    
+    // Draw time labels at key points
+    for (let i = 0; i <= 5; i++) {
+        const x = padding + (graphWidth / 5) * i;
+        const minutesAgo = Math.round((5 - i) * minutes / 5);
+        const timestamp = now - (minutesAgo * 60000);
+        const date = new Date(timestamp);
+        
+        // Relative time label
+        const relativeLabel = i === 5 ? 'now' : `-${minutesAgo} min`;
+        ctx.fillText(relativeLabel, x, padding + graphHeight + 20);
+        
+        // Actual time label
+        const timeLabel = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        ctx.font = '10px monospace';
+        ctx.fillText(timeLabel, x, padding + graphHeight + 35);
+        ctx.font = '11px monospace';
+    }
+    
+    // Draw TPS line (green)
+    ctx.strokeStyle = '#4a9';
     ctx.lineWidth = 2;
     ctx.beginPath();
     metrics.forEach((point, index) => {
@@ -147,8 +500,8 @@ function updateMetricsChart(metrics) {
     });
     ctx.stroke();
     
-    // Draw Memory line
-    ctx.strokeStyle = '#e74c3c';
+    // Draw Memory line (red)
+    ctx.strokeStyle = '#d44';
     ctx.lineWidth = 2;
     ctx.beginPath();
     metrics.forEach((point, index) => {
@@ -159,13 +512,58 @@ function updateMetricsChart(metrics) {
     });
     ctx.stroke();
     
+    // Draw CPU line (orange)
+    ctx.strokeStyle = '#f90';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    metrics.forEach((point, index) => {
+        const x = padding + (graphWidth / (metrics.length - 1)) * index;
+        const y = padding + graphHeight - (point.cpu / maxCPU) * graphHeight;
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    
+    // Draw Player Count line (blue) - uses right axis
+    ctx.strokeStyle = '#4af';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    metrics.forEach((point, index) => {
+        const x = padding + (graphWidth / (metrics.length - 1)) * index;
+        const y = padding + graphHeight - (point.players / maxPlayerCount) * graphHeight;
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    
     // Draw legend
-    ctx.font = '12px sans-serif';
-    ctx.fillStyle = '#3498db';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#4a9';
     ctx.fillText('TPS', padding, 20);
-    ctx.fillStyle = '#e74c3c';
-    ctx.fillText('Memory %', padding + 60, 20);
+    ctx.fillStyle = '#d44';
+    ctx.fillText('Memory', padding + 60, 20);
+    ctx.fillStyle = '#f90';
+    ctx.fillText('CPU', padding + 130, 20);
+    ctx.fillStyle = '#4af';
+    ctx.fillText('Players', padding + 180, 20);
 }
+
+// Shutdown Server
+document.getElementById('shutdown-server-btn').addEventListener('click', async () => {
+    const confirmed = await customConfirm('Are you sure you want to shutdown the server? All players will be disconnected and the server will stop.');
+    if (!confirmed) {
+        return;
+    }
+    
+    try {
+        await API.post('/restart', {});
+        await customAlert('Server shutdown initiated.');
+    } catch (error) {
+        console.error('Error shutting down server:', error);
+        await customAlert('Failed to shutdown server: ' + error.message);
+    }
+});
 
 // Players
 async function loadPlayers() {
@@ -179,16 +577,18 @@ async function loadPlayers() {
                 const row = document.createElement('tr');
                 
                 const statusClass = player.online ? 'online' : 'offline';
-                const statusText = player.online ? 'Online' : formatLastSeen(player.lastSeen);
+                const statusText = player.online ? 'Online' : 'Offline';
                 const playTime = formatPlayTime(player.playTime);
+                const playerHeadUrl = `/api/player-head/${player.uuid}`;
                 
                 row.innerHTML = `
-                    <td>${escapeHtml(player.name)}</td>
+                    <td><img src="${playerHeadUrl}" class="player-head" alt="${escapeHtml(player.name)}" onerror="this.style.display='none'">${escapeHtml(player.name)}</td>
                     <td><span class="status ${statusClass}">${statusText}</span></td>
                     <td>${playTime}</td>
                     <td>
-                        <button onclick="showPlayerInventory('${player.uuid}', '${escapeHtml(player.name)}')" ${!player.online ? 'disabled' : ''}>Inventory</button>
+                        <button onclick="showPlayerInventory('${player.uuid}', '${escapeHtml(player.name)}')">Inventory</button>
                         <button class="danger" onclick="toggleBan('${player.uuid}', ${player.banned})">${player.banned ? 'Unban' : 'Ban'}</button>
+                        <button onclick="toggleOp('${player.uuid}', ${player.op || false})">${player.op ? 'DeOP' : 'OP'}</button>
                     </td>
                 `;
                 tbody.appendChild(row);
@@ -222,13 +622,13 @@ async function showPlayerInventory(uuid, name) {
                 inventoryDiv.appendChild(itemDiv);
             });
         } else {
-            inventoryDiv.innerHTML = '<p>Inventory is empty or player is offline</p>';
+            inventoryDiv.innerHTML = '<p>Inventory is empty or unavailable</p>';
         }
         
         document.getElementById('player-modal').classList.add('active');
     } catch (error) {
         console.error('Error loading player inventory:', error);
-        alert('Failed to load player inventory');
+        await customAlert('Failed to load player inventory');
     }
 }
 
@@ -239,12 +639,35 @@ async function toggleBan(uuid, isBanned) {
         await loadPlayers();
     } catch (error) {
         console.error('Error toggling ban:', error);
-        alert('Failed to ' + (isBanned ? 'unban' : 'ban') + ' player');
+        await customAlert('Failed to ' + (isBanned ? 'unban' : 'ban') + ' player');
+    }
+}
+
+async function toggleOp(uuid, isOp) {
+    try {
+        const action = isOp ? 'deop' : 'op';
+        await API.post(`/player/${uuid}/action`, { action });
+        await loadPlayers();
+    } catch (error) {
+        console.error('Error toggling OP:', error);
+        await customAlert('Failed to ' + (isOp ? 'de-op' : 'op') + ' player');
     }
 }
 
 // Whitelist
+let whitelistInterval;
+
 async function loadWhitelist() {
+    // Clear existing interval
+    if (whitelistInterval) clearInterval(whitelistInterval);
+    
+    await updateWhitelist();
+    
+    // Auto-refresh every 5 seconds
+    whitelistInterval = setInterval(updateWhitelist, 5000);
+}
+
+async function updateWhitelist() {
     try {
         const data = await API.get('/whitelist');
         const tbody = document.getElementById('whitelist-list');
@@ -253,14 +676,16 @@ async function loadWhitelist() {
         if (data.whitelist && data.whitelist.length > 0) {
             data.whitelist.forEach(entry => {
                 const row = document.createElement('tr');
+                const playerHeadUrl = `/api/player-head/${entry.uuid}`;
                 row.innerHTML = `
-                    <td>${escapeHtml(entry.name)}</td>
+                    <td><img src="${playerHeadUrl}" class="player-head" alt="${escapeHtml(entry.name)}" onerror="this.style.display='none'">${escapeHtml(entry.name)}</td>
                     <td><code>${entry.uuid}</code></td>
+                    <td><button class="danger" onclick="removeFromWhitelist('${entry.uuid}', '${escapeHtml(entry.name)}')">Remove</button></td>
                 `;
                 tbody.appendChild(row);
             });
         } else {
-            tbody.innerHTML = '<tr><td colspan="2">Whitelist is empty</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="3">Whitelist is empty</td></tr>';
         }
     } catch (error) {
         console.error('Error loading whitelist:', error);
@@ -270,21 +695,55 @@ async function loadWhitelist() {
 document.getElementById('whitelist-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    const name = document.getElementById('whitelist-name').value;
-    const uuid = document.getElementById('whitelist-uuid').value;
+    const name = document.getElementById('whitelist-name').value.trim();
+    let uuid = document.getElementById('whitelist-uuid').value.trim();
+    
+    if (!uuid) {
+        // Fetch UUID from backend (already formatted)
+        uuid = await fetchUUID(name);
+        if (!uuid) {
+            await customAlert('Could not find UUID for player: ' + name);
+            return;
+        }
+    }
     
     try {
         await API.post('/whitelist/add', { name, uuid });
         document.getElementById('whitelist-form').reset();
-        await loadWhitelist();
+        await updateWhitelist();
     } catch (error) {
         console.error('Error adding to whitelist:', error);
-        alert('Failed to add player to whitelist');
+        await customAlert('Failed to add player to whitelist');
     }
 });
 
+async function removeFromWhitelist(uuid, name) {
+    const confirmed = await customConfirm(`Remove ${name} from whitelist?`);
+    if (!confirmed) return;
+    
+    try {
+        await API.delete(`/whitelist/remove?uuid=${uuid}`);
+        await updateWhitelist();
+    } catch (error) {
+        console.error('Error removing from whitelist:', error);
+        await customAlert('Failed to remove player from whitelist');
+    }
+}
+
 // Blacklist
+let blacklistInterval;
+
 async function loadBlacklist() {
+    // Clear existing interval
+    if (blacklistInterval) clearInterval(blacklistInterval);
+    
+    await updateBlacklist();
+    
+    // Auto-refresh every 5 seconds
+    blacklistInterval = setInterval(updateBlacklist, 5000);
+}
+
+async function updateBlacklist() {
     try {
         const data = await API.get('/blacklist');
         const tbody = document.getElementById('blacklist-list');
@@ -293,14 +752,16 @@ async function loadBlacklist() {
         if (data.blacklist && data.blacklist.length > 0) {
             data.blacklist.forEach(entry => {
                 const row = document.createElement('tr');
+                const playerHeadUrl = `/api/player-head/${entry.uuid}`;
                 row.innerHTML = `
-                    <td>${escapeHtml(entry.name)}</td>
+                    <td><img src="${playerHeadUrl}" class="player-head" alt="${escapeHtml(entry.name)}" onerror="this.style.display='none'">${escapeHtml(entry.name)}</td>
                     <td><code>${entry.uuid}</code></td>
+                    <td><button class="danger" onclick="removeFromBlacklist('${entry.uuid}', '${escapeHtml(entry.name)}')">Remove</button></td>
                 `;
                 tbody.appendChild(row);
             });
         } else {
-            tbody.innerHTML = '<tr><td colspan="2">Blacklist is empty</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="3">Blacklist is empty</td></tr>';
         }
     } catch (error) {
         console.error('Error loading blacklist:', error);
@@ -310,18 +771,116 @@ async function loadBlacklist() {
 document.getElementById('blacklist-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    const name = document.getElementById('blacklist-name').value;
-    const uuid = document.getElementById('blacklist-uuid').value;
+    const name = document.getElementById('blacklist-name').value.trim();
+    let uuid = document.getElementById('blacklist-uuid').value.trim();
+    
+    if (!uuid) {
+        // Fetch UUID from backend (already formatted)
+        uuid = await fetchUUID(name);
+        if (!uuid) {
+            await customAlert('Could not find UUID for player: ' + name);
+            return;
+        }
+    }
     
     try {
         await API.post('/blacklist/add', { name, uuid });
         document.getElementById('blacklist-form').reset();
-        await loadBlacklist();
+        await updateBlacklist();
     } catch (error) {
         console.error('Error adding to blacklist:', error);
-        alert('Failed to add player to blacklist');
+        await customAlert('Failed to add player to blacklist');
     }
 });
+
+async function removeFromBlacklist(uuid, name) {
+    const confirmed = await customConfirm(`Remove ${name} from blacklist?`);
+    if (!confirmed) return;
+    
+    try {
+        await API.delete(`/blacklist/remove?uuid=${uuid}`);
+        await updateBlacklist();
+    } catch (error) {
+        console.error('Error removing from blacklist:', error);
+        await customAlert('Failed to remove player from blacklist');
+    }
+}
+
+// OPs
+let opsInterval;
+
+async function loadOps() {
+    // Clear existing interval
+    if (opsInterval) clearInterval(opsInterval);
+    
+    await updateOps();
+    
+    // Auto-refresh every 5 seconds
+    opsInterval = setInterval(updateOps, 5000);
+}
+
+async function updateOps() {
+    try {
+        const data = await API.get('/ops');
+        const tbody = document.getElementById('ops-list');
+        tbody.innerHTML = '';
+        
+        if (data.ops && data.ops.length > 0) {
+            data.ops.forEach(entry => {
+                const row = document.createElement('tr');
+                const playerHeadUrl = `/api/player-head/${entry.uuid}`;
+                row.innerHTML = `
+                    <td><img src="${playerHeadUrl}" class="player-head" alt="${escapeHtml(entry.name)}" onerror="this.style.display='none'">${escapeHtml(entry.name)}</td>
+                    <td><code>${entry.uuid}</code></td>
+                    <td><button class="danger" onclick="removeFromOps('${entry.uuid}', '${escapeHtml(entry.name)}')">Remove</button></td>
+                `;
+                tbody.appendChild(row);
+            });
+        } else {
+            tbody.innerHTML = '<tr><td colspan="3">No operators</td></tr>';
+        }
+    } catch (error) {
+        console.error('Error loading ops:', error);
+    }
+}
+
+document.getElementById('ops-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const name = document.getElementById('ops-name').value.trim();
+    let uuid = document.getElementById('ops-uuid').value.trim();
+    
+    if (!uuid) {
+        // Fetch UUID from backend (already formatted)
+        uuid = await fetchUUID(name);
+        if (!uuid) {
+            await customAlert('Could not find UUID for player: ' + name);
+            return;
+        }
+    }
+    
+    try {
+        await API.post('/ops/add', { name, uuid });
+        document.getElementById('ops-form').reset();
+        await updateOps();
+    } catch (error) {
+        console.error('Error adding operator:', error);
+        await customAlert('Failed to add operator');
+    }
+});
+
+async function removeFromOps(uuid, name) {
+    const confirmed = await customConfirm(`Remove ${name} from operators?`);
+    if (!confirmed) return;
+    
+    try {
+        await API.delete(`/ops/remove?uuid=${uuid}`);
+        await updateOps();
+    } catch (error) {
+        console.error('Error removing operator:', error);
+        await customAlert('Failed to remove operator');
+    }
+}
 
 // Plugins
 async function loadPlugins() {
@@ -355,9 +914,15 @@ async function loadPlugins() {
 // Server Info
 async function loadServerInfo() {
     try {
-        const data = await API.get('/server');
-        const container = document.getElementById('server-info');
-        container.innerHTML = '';
+        const [data, geyserData] = await Promise.all([
+            API.get('/server'),
+            API.get('/geysermc')
+        ]);
+        
+        const infoContainer = document.getElementById('server-info');
+        const worldsContainer = document.getElementById('server-worlds');
+        infoContainer.innerHTML = '';
+        worldsContainer.innerHTML = '';
         
         // Main server info
         const mainCard = createInfoCard('Server Information', {
@@ -371,7 +936,7 @@ async function loadServerInfo() {
             'Port': data.port,
             'MOTD': data.motd
         });
-        container.appendChild(mainCard);
+        infoContainer.appendChild(mainCard);
         
         // Settings
         const settingsCard = createInfoCard('Settings', {
@@ -380,7 +945,30 @@ async function loadServerInfo() {
             'Allow Nether': data.allowNether ? 'Yes' : 'No',
             'Allow End': data.allowEnd ? 'Yes' : 'No'
         });
-        container.appendChild(settingsCard);
+        infoContainer.appendChild(settingsCard);
+        
+        // GeyserMC info (if detected)
+        if (geyserData.detected) {
+            const geyserInfo = {
+                'Version': geyserData.version || 'Unknown',
+                'Bedrock Port': geyserData.bedrockPort || 'Not configured'
+            };
+            
+            if (geyserData.bedrockAddress && geyserData.bedrockAddress !== '0.0.0.0') {
+                geyserInfo['Bedrock Address'] = geyserData.bedrockAddress;
+            }
+            
+            if (geyserData.motd1) {
+                geyserInfo['MOTD Line 1'] = geyserData.motd1;
+            }
+            
+            if (geyserData.motd2) {
+                geyserInfo['MOTD Line 2'] = geyserData.motd2;
+            }
+            
+            const geyserCard = createInfoCard('GeyserMC (Bedrock Support)', geyserInfo);
+            infoContainer.appendChild(geyserCard);
+        }
         
         // Worlds
         if (data.worlds && data.worlds.length > 0) {
@@ -391,7 +979,7 @@ async function loadServerInfo() {
                     'PvP': world.pvp ? 'Enabled' : 'Disabled',
                     'Seed': world.seed
                 });
-                container.appendChild(worldCard);
+                worldsContainer.appendChild(worldCard);
             });
         }
     } catch (error) {
@@ -460,9 +1048,277 @@ document.getElementById('console-form').addEventListener('submit', async (e) => 
         setTimeout(updateConsole, 500);
     } catch (error) {
         console.error('Error executing command:', error);
-        alert('Failed to execute command');
+        await customAlert('Failed to execute command');
     }
 });
+
+// Chat Console
+let chatInterval;
+
+async function loadChat() {
+    // Clear existing interval
+    if (chatInterval) clearInterval(chatInterval);
+    
+    // Load initial logs
+    await updateChat();
+    
+    // Update every 2 seconds
+    chatInterval = setInterval(updateChat, 2000);
+}
+
+async function updateChat() {
+    try {
+        const data = await API.get('/chat');
+        const logDiv = document.getElementById('chat-log');
+        
+        if (data.logs && data.logs.length > 0) {
+            logDiv.innerHTML = data.logs.map(log => 
+                `<div class="console-log-line">${escapeHtml(log)}</div>`
+            ).join('');
+            
+            // Auto-scroll to bottom
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+    } catch (error) {
+        console.error('Error loading chat:', error);
+    }
+}
+
+document.getElementById('chat-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const input = document.getElementById('chat-input');
+    const message = input.value.trim();
+    
+    if (!message) return;
+    
+    try {
+        await API.post('/chat', { message });
+        input.value = '';
+        
+        // Wait a bit then refresh chat
+        setTimeout(updateChat, 500);
+    } catch (error) {
+        console.error('Error sending chat message:', error);
+        await customAlert('Failed to send message');
+    }
+});
+
+// Settings
+async function loadSettings() {
+    try {
+        const data = await API.get('/settings');
+        
+        // Render server properties with organized sections
+        const propsContainer = document.getElementById('server-properties-form');
+        propsContainer.innerHTML = '';
+        
+        if (data.properties) {
+            // Define property categories
+            const categories = {
+                'Basic Settings': ['motd', 'max-players', 'difficulty', 'whitelist'],
+                'Network Settings': ['online-mode', 'allow-flight', 'allow-nether', 'allow-end'],
+            };
+            
+            // Render categorized properties
+            for (const [categoryName, keys] of Object.entries(categories)) {
+                const section = document.createElement('div');
+                section.className = 'settings-section';
+                
+                const heading = document.createElement('h4');
+                heading.textContent = categoryName;
+                section.appendChild(heading);
+                
+                for (const key of keys) {
+                    if (data.properties.hasOwnProperty(key)) {
+                        const value = data.properties[key];
+                        const formGroup = createSettingInput(key, value, 'prop');
+                        section.appendChild(formGroup);
+                    }
+                }
+                
+                propsContainer.appendChild(section);
+            }
+            
+            const saveBtn = document.createElement('button');
+            saveBtn.textContent = 'Save Properties';
+            saveBtn.style.marginTop = '1rem';
+            saveBtn.onclick = saveServerProperties;
+            propsContainer.appendChild(saveBtn);
+        }
+        
+        // Render game rules with organized sections
+        const rulesContainer = document.getElementById('gamerules-form');
+        rulesContainer.innerHTML = '';
+        
+        if (data.gamerules) {
+            // Group gamerules by category
+            const ruleCategories = {
+                'Mob Behaviour': ['doMobSpawning', 'doMobLoot', 'mobGriefing', 'doPatrolSpawning', 'doTraderSpawning', 'doWardenSpawning'],
+                'Player Settings': ['keepInventory', 'doImmediateRespawn', 'playersSleepingPercentage', 'naturalRegeneration', 'showDeathMessages'],
+                'World Settings': ['doDaylightCycle', 'doWeatherCycle', 'randomTickSpeed', 'spawnRadius'],
+                'Block & Fire': ['doFireTick', 'doTileDrops', 'tntExplodes'],
+                'Other': []
+            };
+            
+            // Sort gamerules into categories
+            const sortedRules = {};
+            const usedKeys = new Set();
+            
+            for (const [category, keys] of Object.entries(ruleCategories)) {
+                sortedRules[category] = [];
+                for (const key of keys) {
+                    if (data.gamerules.hasOwnProperty(key)) {
+                        sortedRules[category].push([key, data.gamerules[key]]);
+                        usedKeys.add(key);
+                    }
+                }
+            }
+            
+            // Add remaining rules to "Other"
+            for (const [key, value] of Object.entries(data.gamerules)) {
+                if (!usedKeys.has(key)) {
+                    sortedRules['Other'].push([key, value]);
+                }
+            }
+            
+            // Render categorized game rules
+            for (const [categoryName, rules] of Object.entries(sortedRules)) {
+                if (rules.length === 0) continue;
+                
+                const section = document.createElement('div');
+                section.className = 'settings-section';
+                
+                const heading = document.createElement('h4');
+                heading.textContent = categoryName;
+                section.appendChild(heading);
+                
+                for (const [key, value] of rules) {
+                    const formGroup = createSettingInput(key, value, 'rule');
+                    section.appendChild(formGroup);
+                }
+                
+                rulesContainer.appendChild(section);
+            }
+            
+            const saveBtn = document.createElement('button');
+            saveBtn.textContent = 'Save Game Rules';
+            saveBtn.style.marginTop = '1rem';
+            saveBtn.onclick = saveGameRules;
+            rulesContainer.appendChild(saveBtn);
+        }
+    } catch (error) {
+        console.error('Error loading settings:', error);
+    }
+}
+
+function createSettingInput(key, value, prefix) {
+    const formGroup = document.createElement('div');
+    formGroup.className = 'form-group';
+    
+    const label = document.createElement('label');
+    label.textContent = key.replace(/-/g, ' ').replace(/([A-Z])/g, ' $1').replace(/\b\w/g, l => l.toUpperCase());
+    formGroup.appendChild(label);
+    
+    const valueStr = String(value).toLowerCase();
+    
+    // Check if boolean
+    if (valueStr === 'true' || valueStr === 'false') {
+        const toggleContainer = document.createElement('div');
+        toggleContainer.className = 'toggle-container';
+        
+        const falseLabel = document.createElement('span');
+        falseLabel.className = 'toggle-label';
+        falseLabel.textContent = 'false';
+        
+        const switchLabel = document.createElement('label');
+        switchLabel.className = 'toggle-switch';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = valueStr === 'true';
+        checkbox.id = `${prefix}-${key}`;
+        checkbox.dataset.key = key;
+        
+        const slider = document.createElement('span');
+        slider.className = 'toggle-slider';
+        
+        switchLabel.appendChild(checkbox);
+        switchLabel.appendChild(slider);
+        
+        const trueLabel = document.createElement('span');
+        trueLabel.className = 'toggle-label';
+        trueLabel.textContent = 'true';
+        
+        toggleContainer.appendChild(falseLabel);
+        toggleContainer.appendChild(switchLabel);
+        toggleContainer.appendChild(trueLabel);
+        
+        formGroup.appendChild(toggleContainer);
+    }
+    // Check if number
+    else if (!isNaN(value) && value !== '') {
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.value = value;
+        input.id = `${prefix}-${key}`;
+        input.dataset.key = key;
+        formGroup.appendChild(input);
+    }
+    // Text field
+    else {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = value;
+        input.id = `${prefix}-${key}`;
+        input.dataset.key = key;
+        formGroup.appendChild(input);
+    }
+    
+    return formGroup;
+}
+
+async function saveServerProperties() {
+    const properties = {};
+    document.querySelectorAll('#server-properties-form input, #server-properties-form input[type="checkbox"]').forEach(input => {
+        if (input.dataset.key) {
+            if (input.type === 'checkbox') {
+                properties[input.dataset.key] = input.checked;
+            } else {
+                properties[input.dataset.key] = input.value;
+            }
+        }
+    });
+    
+    try {
+        await API.post('/settings/properties', { properties });
+        await customAlert('Server properties saved successfully');
+    } catch (error) {
+        console.error('Error saving properties:', error);
+        await customAlert('Failed to save server properties');
+    }
+}
+
+async function saveGameRules() {
+    const gamerules = {};
+    document.querySelectorAll('#gamerules-form input, #gamerules-form input[type="checkbox"]').forEach(input => {
+        if (input.dataset.key) {
+            if (input.type === 'checkbox') {
+                gamerules[input.dataset.key] = input.checked;
+            } else {
+                gamerules[input.dataset.key] = input.value;
+            }
+        }
+    });
+    
+    try {
+        await API.post('/settings/gamerules', { gamerules });
+        await customAlert('Game rules saved successfully');
+    } catch (error) {
+        console.error('Error saving game rules:', error);
+        await customAlert('Failed to save game rules');
+    }
+}
 
 // Modal
 document.querySelector('.close').addEventListener('click', () => {
@@ -510,4 +1366,5 @@ function escapeHtml(text) {
 }
 
 // Initialize
-loadPage('metrics');
+loadPage('status');
+startOfflineCheck();
