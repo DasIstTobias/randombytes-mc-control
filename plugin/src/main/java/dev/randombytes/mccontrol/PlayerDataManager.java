@@ -32,6 +32,45 @@ public class PlayerDataManager {
         
         // Load existing player data
         loadPlayerData();
+        
+        // Start inventory caching task (every 10 seconds = 200 ticks)
+        startInventoryCaching();
+    }
+    
+    private void startInventoryCaching() {
+        Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, () -> {
+            cacheOnlinePlayerInventories();
+        }, 200L, 200L); // Start after 10 seconds, repeat every 10 seconds
+    }
+    
+    private void cacheOnlinePlayerInventories() {
+        try {
+            // Create cache directory if it doesn't exist
+            File cacheDir = new File(plugin.getDataFolder().getParentFile().getParentFile(), "cache/inventories");
+            if (!cacheDir.exists()) {
+                cacheDir.mkdirs();
+            }
+            
+            // Cache inventory for each online player
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                try {
+                    JsonObject cached = new JsonObject();
+                    cached.addProperty("uuid", player.getUniqueId().toString());
+                    cached.addProperty("name", player.getName());
+                    cached.addProperty("timestamp", System.currentTimeMillis());
+                    cached.add("inventory", getPlayerInventory(player));
+                    
+                    File cacheFile = new File(cacheDir, player.getUniqueId().toString() + ".json");
+                    try (FileWriter writer = new FileWriter(cacheFile)) {
+                        plugin.getGson().toJson(cached, writer);
+                    }
+                } catch (IOException e) {
+                    plugin.getLogger().warning("Failed to cache inventory for " + player.getName() + ": " + e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("Error in inventory caching task: " + e.getMessage());
+        }
     }
     
     private void loadPlayerData() {
@@ -100,6 +139,13 @@ public class PlayerDataManager {
             if (player != null && player.isOnline()) {
                 JsonArray inventory = getPlayerInventory(player);
                 result.add("inventory", inventory);
+            } else {
+                // Try to load cached inventory
+                JsonArray cachedInventory = loadCachedInventory(uuid);
+                if (cachedInventory != null) {
+                    result.add("inventory", cachedInventory);
+                    result.addProperty("cached", true);
+                }
             }
             
             return result;
@@ -135,6 +181,25 @@ public class PlayerDataManager {
         return Arrays.stream(name.split("_"))
             .map(word -> word.substring(0, 1).toUpperCase() + word.substring(1).toLowerCase())
             .collect(Collectors.joining(" "));
+    }
+    
+    private JsonArray loadCachedInventory(UUID uuid) {
+        try {
+            File cacheDir = new File(plugin.getDataFolder().getParentFile().getParentFile(), "cache/inventories");
+            File cacheFile = new File(cacheDir, uuid.toString() + ".json");
+            
+            if (!cacheFile.exists()) {
+                return null;
+            }
+            
+            try (FileReader reader = new FileReader(cacheFile)) {
+                JsonObject cached = plugin.getGson().fromJson(reader, JsonObject.class);
+                return cached.getAsJsonArray("inventory");
+            }
+        } catch (Exception e) {
+            plugin.getLogger().fine("Could not load cached inventory for " + uuid + ": " + e.getMessage());
+            return null;
+        }
     }
     
     public void performPlayerAction(String uuidStr, String action) {

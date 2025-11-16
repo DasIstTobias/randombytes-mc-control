@@ -83,6 +83,7 @@ async fn main() {
         .route("/api/ops/remove", axum::routing::delete(remove_from_ops))
         .route("/api/plugins", get(get_plugins))
         .route("/api/server", get(get_server_info))
+        .route("/api/server-icon", get(get_server_icon))
         .route("/api/console", get(get_console))
         .route("/api/command", post(execute_command))
         .route("/api/chat", get(get_chat))
@@ -542,6 +543,36 @@ async fn get_player_head(
         Err(e) => {
             error!("Failed to fetch player head from Crafatar: {}", e);
             Err(ApiError::PluginError("Failed to fetch player head".to_string()))
+        }
+    }
+}
+
+async fn get_server_icon(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, ApiError> {
+    let client = state.plugin_client.read().await;
+    
+    match client.get_server_icon().await {
+        Ok(response) => {
+            if let Some(icon_data) = response.get("icon") {
+                if let Some(icon_str) = icon_data.as_str() {
+                    // Icon data is base64 encoded PNG
+                    use base64::Engine;
+                    if let Ok(icon_bytes) = base64::engine::general_purpose::STANDARD.decode(icon_str) {
+                        return Ok((
+                            StatusCode::OK,
+                            [(axum::http::header::CONTENT_TYPE, "image/png")],
+                            icon_bytes
+                        ));
+                    }
+                }
+            }
+            // Return 404 if no icon available
+            Err(ApiError::PluginError("Server icon not available".to_string()))
+        }
+        Err(e) => {
+            error!("Failed to fetch server icon: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
         }
     }
 }

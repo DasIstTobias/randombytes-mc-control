@@ -164,6 +164,10 @@ public class MCControlPlugin extends JavaPlugin {
         return metricsCollector;
     }
     
+    public MetricsCollector getMetricsCollector() {
+        return metricsCollector;
+    }
+    
     public PlayerDataManager getPlayerDataManager() {
         return playerDataManager;
     }

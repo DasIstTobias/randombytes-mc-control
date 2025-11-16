@@ -11,6 +11,9 @@
     <div class="container">
         <nav class="sidebar">
             <h1>MC Control</h1>
+            <div id="sidebar-server-info" class="sidebar-server-info" style="display: none;">
+                <!-- Will be populated with server info -->
+            </div>
             <ul class="nav-menu">
                 <li class="nav-section-title"># Status</li>
                 <li><a href="#" class="nav-link active" data-page="status">Status</a></li>
@@ -34,6 +37,12 @@
             <!-- Status Page (formerly Metrics) -->
             <div id="status-page" class="page active">
                 <h2>Server Status</h2>
+                
+                <!-- Server Identity Header -->
+                <div id="server-identity" class="server-identity" style="display: none;">
+                    <!-- Will be populated with server identity -->
+                </div>
+                
                 <p class="subtitle">Last 10 minutes</p>
                 <div class="metrics-grid">
                     <div class="metric-card">

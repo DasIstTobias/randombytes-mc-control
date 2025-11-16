@@ -288,27 +288,128 @@ async function loadStatus() {
     statusInterval = setInterval(updateStatus, 2000);
 }
 
+let maxPlayers = 20; // Default value, will be updated from server info
+let serverIdentityData = null; // Store server identity data
+let geyserMCDetected = false;
+let geyserMCPort = null;
+
+// Load sidebar server info on page load
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadSidebarServerInfo();
+});
+
+async function loadSidebarServerInfo() {
+    try {
+        const [serverData, pluginsData] = await Promise.all([
+            API.get('/server'),
+            API.get('/plugins')
+        ]);
+        
+        // Store server identity
+        serverIdentityData = serverData;
+        
+        // Check for GeyserMC
+        if (pluginsData.plugins) {
+            const geyser = pluginsData.plugins.find(p => p.name === 'Geyser-Spigot' || p.name === 'GeyserMC');
+            if (geyser) {
+                geyserMCDetected = true;
+                // Try to get GeyserMC port from config (we'll implement this endpoint later if needed)
+                // For now, we'll just show that it's detected
+            }
+        }
+        
+        // Populate sidebar
+        const sidebarInfo = document.getElementById('sidebar-server-info');
+        if (serverData) {
+            let html = '';
+            
+            // Try to load server icon
+            html += `<img src="/api/server-icon" alt="Server Icon" onerror="this.style.display='none'">`;
+            
+            html += `<div class="sidebar-server-details">`;
+            html += `<div class="server-address">${escapeHtml(serverData.ip || 'localhost')}</div>`;
+            html += `<div class="server-port">Port: ${serverData.port}</div>`;
+            html += `</div>`;
+            
+            sidebarInfo.innerHTML = html;
+            sidebarInfo.style.display = 'flex';
+        }
+    } catch (error) {
+        console.error('Error loading sidebar server info:', error);
+    }
+}
+
 async function updateStatus() {
     try {
-        const data = await API.get('/metrics');
+        const [metricsData, serverData] = await Promise.all([
+            API.get('/metrics'),
+            API.get('/server')
+        ]);
         
-        if (data.metrics && data.metrics.length > 0) {
-            const latest = data.metrics[data.metrics.length - 1];
+        if (metricsData.metrics && metricsData.metrics.length > 0) {
+            const latest = metricsData.metrics[metricsData.metrics.length - 1];
             
             document.getElementById('current-players').textContent = latest.players || 0;
             document.getElementById('current-tps').textContent = (latest.tps || 0).toFixed(1);
             document.getElementById('current-memory').textContent = (latest.memory || 0).toFixed(1) + '%';
             document.getElementById('current-cpu').textContent = (latest.cpu || 0).toFixed(1) + '%';
             
+            // Update max players from server info
+            if (serverData && serverData.maxPlayers) {
+                maxPlayers = serverData.maxPlayers;
+            }
+            
+            // Update server identity header if not yet displayed
+            if (serverData && serverIdentityData) {
+                updateServerIdentityHeader(serverData);
+            }
+            
             // Update chart
-            updateMetricsChart(data.metrics);
+            updateMetricsChart(metricsData.metrics, maxPlayers);
         }
     } catch (error) {
         console.error('Error updating status:', error);
     }
 }
 
-function updateMetricsChart(metrics) {
+function updateServerIdentityHeader(serverData) {
+    const identityDiv = document.getElementById('server-identity');
+    if (!identityDiv || identityDiv.style.display === 'flex') {
+        return; // Already displayed
+    }
+    
+    let html = '';
+    
+    // Server icon
+    html += `<img src="/api/server-icon" alt="Server Icon" onerror="this.style.display='none'">`;
+    
+    // Main server info
+    html += `<div class="server-identity-main">`;
+    html += `<div class="server-identity-address">${escapeHtml(serverData.ip || 'localhost')}</div>`;
+    html += `<div class="server-identity-motd">${escapeHtml(serverData.motd || 'A Minecraft Server')}</div>`;
+    html += `</div>`;
+    
+    // Port and GeyserMC info
+    html += `<div class="server-identity-extra">`;
+    html += `<div class="server-identity-port">Port: ${serverData.port}</div>`;
+    
+    if (geyserMCDetected) {
+        html += `<div class="server-identity-geyser">`;
+        html += `<h4>GeyserMC</h4>`;
+        html += `<p>Bedrock support enabled</p>`;
+        if (geyserMCPort) {
+            html += `<p>Port: ${geyserMCPort}</p>`;
+        }
+        html += `</div>`;
+    }
+    
+    html += `</div>`;
+    
+    identityDiv.innerHTML = html;
+    identityDiv.style.display = 'flex';
+}
+
+function updateMetricsChart(metrics, maxPlayerCount) {
     const canvas = document.getElementById('metricsChart');
     const ctx = canvas.getContext('2d');
     
@@ -318,9 +419,11 @@ function updateMetricsChart(metrics) {
     
     const width = canvas.width;
     const height = canvas.offsetHeight;
-    const padding = 60; // Increased for percentage labels
-    const graphWidth = width - padding * 2;
-    const graphHeight = height - padding * 2;
+    const padding = 60; // Space for labels
+    const paddingRight = 70; // Extra space for player count axis
+    const paddingBottom = 50; // Extra space for time axis
+    const graphWidth = width - padding - paddingRight;
+    const graphHeight = height - padding - paddingBottom;
     
     ctx.clearRect(0, 0, width, height);
     
@@ -329,12 +432,13 @@ function updateMetricsChart(metrics) {
     // Find max values
     const maxTPS = 20;
     const maxMemory = 100;
+    const maxCPU = 100;
     
     // Set font for labels
-    ctx.font = '12px monospace';
+    ctx.font = '11px monospace';
     ctx.fillStyle = '#999';
     
-    // Draw grid and percentage labels
+    // Draw grid and percentage labels (left axis)
     ctx.strokeStyle = '#333';
     ctx.lineWidth = 1;
     for (let i = 0; i <= 5; i++) {
@@ -344,7 +448,7 @@ function updateMetricsChart(metrics) {
         // Draw grid line
         ctx.beginPath();
         ctx.moveTo(padding, y);
-        ctx.lineTo(width - padding, y);
+        ctx.lineTo(padding + graphWidth, y);
         ctx.stroke();
         
         // Draw percentage label on left
@@ -352,7 +456,44 @@ function updateMetricsChart(metrics) {
         ctx.fillText(`${percentage}%`, padding - 10, y + 4);
     }
     
-    // Draw TPS line
+    // Draw player count axis labels (right side)
+    ctx.fillStyle = '#4af';
+    for (let i = 0; i <= 5; i++) {
+        const y = padding + (graphHeight / 5) * i;
+        const playerValue = Math.round(maxPlayerCount - (i * maxPlayerCount / 5));
+        
+        ctx.textAlign = 'left';
+        ctx.fillText(`${playerValue}`, padding + graphWidth + 10, y + 4);
+    }
+    
+    // Draw time axis labels (bottom)
+    const now = Date.now();
+    const oldest = metrics[0].timestamp;
+    const duration = now - oldest;
+    const minutes = Math.ceil(duration / 60000);
+    
+    ctx.fillStyle = '#999';
+    ctx.textAlign = 'center';
+    
+    // Draw time labels at key points
+    for (let i = 0; i <= 5; i++) {
+        const x = padding + (graphWidth / 5) * i;
+        const minutesAgo = Math.round((5 - i) * minutes / 5);
+        const timestamp = now - (minutesAgo * 60000);
+        const date = new Date(timestamp);
+        
+        // Relative time label
+        const relativeLabel = i === 5 ? 'now' : `-${minutesAgo} min`;
+        ctx.fillText(relativeLabel, x, padding + graphHeight + 20);
+        
+        // Actual time label
+        const timeLabel = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        ctx.font = '10px monospace';
+        ctx.fillText(timeLabel, x, padding + graphHeight + 35);
+        ctx.font = '11px monospace';
+    }
+    
+    // Draw TPS line (green)
     ctx.strokeStyle = '#4a9';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -364,7 +505,7 @@ function updateMetricsChart(metrics) {
     });
     ctx.stroke();
     
-    // Draw Memory line
+    // Draw Memory line (red)
     ctx.strokeStyle = '#d44';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -376,13 +517,41 @@ function updateMetricsChart(metrics) {
     });
     ctx.stroke();
     
+    // Draw CPU line (orange)
+    ctx.strokeStyle = '#f90';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    metrics.forEach((point, index) => {
+        const x = padding + (graphWidth / (metrics.length - 1)) * index;
+        const y = padding + graphHeight - (point.cpu / maxCPU) * graphHeight;
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    
+    // Draw Player Count line (blue) - uses right axis
+    ctx.strokeStyle = '#4af';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    metrics.forEach((point, index) => {
+        const x = padding + (graphWidth / (metrics.length - 1)) * index;
+        const y = padding + graphHeight - (point.players / maxPlayerCount) * graphHeight;
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    
     // Draw legend
     ctx.font = '12px monospace';
     ctx.textAlign = 'left';
     ctx.fillStyle = '#4a9';
     ctx.fillText('TPS', padding, 20);
     ctx.fillStyle = '#d44';
-    ctx.fillText('Memory %', padding + 60, 20);
+    ctx.fillText('Memory', padding + 60, 20);
+    ctx.fillStyle = '#f90';
+    ctx.fillText('CPU', padding + 130, 20);
+    ctx.fillStyle = '#4af';
+    ctx.fillText('Players', padding + 180, 20);
 }
 
 // Shutdown Server

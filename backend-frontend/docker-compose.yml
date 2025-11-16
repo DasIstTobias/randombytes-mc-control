@@ -9,6 +9,10 @@ services:
     volumes:
       - ./backend.config:/app/backend.config:ro
       - ./frontend:/app/frontend:ro
+      - cache-data:/app/cache
     restart: unless-stopped
     environment:
       - RUST_LOG=info
+
+volumes:
+  cache-data:

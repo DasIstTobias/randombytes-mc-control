@@ -48,6 +48,7 @@ public class APIServer {
             server.createContext("/api/ops", new OpsHandler());
             server.createContext("/api/plugins", new PluginsHandler());
             server.createContext("/api/server", new ServerInfoHandler());
+            server.createContext("/api/server-icon", new ServerIconHandler());
             server.createContext("/api/console", new ConsoleHandler());
             server.createContext("/api/command", new CommandHandler());
             server.createContext("/api/chat", new ChatHandler());
@@ -441,6 +442,41 @@ public class APIServer {
                 sendResponse(exchange, 200, plugin.getGson().toJson(serverInfo));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error getting server info", e);
+                sendError(exchange, 500, "Internal server error");
+            }
+        }
+    }
+    
+    // Server Icon handler
+    private class ServerIconHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!validateAuth(exchange)) {
+                sendError(exchange, 401, "Unauthorized");
+                return;
+            }
+            
+            if (!"GET".equals(exchange.getRequestMethod())) {
+                sendError(exchange, 405, "Method not allowed");
+                return;
+            }
+            
+            try {
+                File iconFile = new File(Bukkit.getWorldContainer(), "server-icon.png");
+                if (!iconFile.exists()) {
+                    sendError(exchange, 404, "Server icon not found");
+                    return;
+                }
+                
+                // Read icon file and encode to base64
+                byte[] iconBytes = java.nio.file.Files.readAllBytes(iconFile.toPath());
+                String base64Icon = Base64.getEncoder().encodeToString(iconBytes);
+                
+                JsonObject response = new JsonObject();
+                response.addProperty("icon", base64Icon);
+                sendResponse(exchange, 200, plugin.getGson().toJson(response));
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.SEVERE, "Error getting server icon", e);
                 sendError(exchange, 500, "Internal server error");
             }
         }

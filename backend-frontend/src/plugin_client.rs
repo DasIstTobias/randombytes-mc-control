@@ -222,4 +222,8 @@ impl PluginClient {
     pub async fn restart_server(&self) -> Result<Value, Box<dyn Error>> {
         self.post("/restart", serde_json::json!({})).await
     }
+    
+    pub async fn get_server_icon(&self) -> Result<Value, Box<dyn Error>> {
+        self.get("/server-icon").await
+    }
 }
