@@ -20,7 +20,7 @@ The control panel has been significantly enhanced with a new dark theme, improve
 The sidebar is now organized into three logical sections:
 
 **# Status**
-- Status (formerly "Server Metrics") - Real-time server metrics with restart button
+- Status (formerly "Server Metrics") - Real-time server metrics with shutdown button
 - Server Info - Server information and world details
 - Plugins - Installed plugin list
 
@@ -39,9 +39,9 @@ The sidebar is now organized into three logical sections:
 
 ### 1. Optional UUID for Whitelist/Blacklist/OPs
 - UUID field is now optional when adding players
-- If not provided, UUID is automatically fetched from Mojang API
+- If not provided, UUID is automatically fetched from Mojang API via backend
 - Format: Automatically adds dashes to UUID if needed
-- **Implementation**: Frontend fetches from `https://api.mojang.com/users/profiles/minecraft/{username}`
+- **Implementation**: Backend endpoint `/api/uuid-lookup?username={username}` fetches from Mojang API server-side to avoid CORS issues
 
 ### 2. Remove Buttons for Lists
 - Whitelist, Blacklist, and OPs now have remove buttons for each entry
@@ -106,6 +106,20 @@ The sidebar is now organized into three logical sections:
 - Better visual separation of sections
 - Shows OP status in player list
 
+### 9. Offline Detection Overlay
+- Red "SERVER OFFLINE" overlay appears when backend is unreachable
+- Blurred background with backdrop-filter effect
+- Auto-detects offline status on every API call
+- Periodic check every 5 seconds
+- Animated pulsing effect
+- Auto-dismisses when connection restored
+
+### 10. Console Log Capture
+- Real-time server console output capture
+- Shows timestamps, thread names, and log levels
+- Format: `[HH:mm:ss] [thread/level]: message`
+- Captures player connections, commands, and all server output
+
 ## Bug Fixes
 
 ### 1. Fixed Unban Functionality
@@ -126,7 +140,35 @@ Bukkit.getBanList(BanList.Type.IP).pardon(player.getName());
 
 **Solution**: Now correctly uses `player.online` property from API, which reflects actual online status from Bukkit
 
-### 3. Offline Player Inventory
+### 3. Fixed UUID CORS Error
+**Problem**: Frontend couldn't fetch UUIDs from Mojang API due to CORS restrictions
+
+**Solution**: Moved UUID lookup to backend via `/api/uuid-lookup` endpoint, which fetches from Mojang server-side
+
+### 4. Fixed GameRule Errors
+**Problem**: Server errors when accessing unavailable gamerules like 'minecartMaxSpeed'
+
+**Solution**: 
+```java
+for (GameRule<?> rule : GameRule.values()) {
+    try {
+        Object value = mainWorld.getGameRuleValue(rule);
+        if (value != null) {
+            gamerules.addProperty(rule.getName(), value.toString());
+        }
+    } catch (IllegalArgumentException e) {
+        // Skip gamerules that are not available
+        plugin.getLogger().fine("GameRule '" + rule.getName() + "' is not available, skipping");
+    }
+}
+```
+
+### 5. Fixed Server Settings Empty List
+**Problem**: Server Settings page showed empty lists due to GameRule errors
+
+**Solution**: GameRule error handling now allows settings page to load successfully with only valid gamerules
+
+### 6. Offline Player Inventory
 **Limitation**: Minecraft doesn't allow viewing offline player inventory through standard API
 **Current Behavior**: Shows "Inventory is empty or unavailable" for offline players
 **Note**: This is a Bukkit/Spigot API limitation
@@ -145,7 +187,8 @@ POST   /api/chat
 GET    /api/settings
 POST   /api/settings/properties
 POST   /api/settings/gamerules
-POST   /api/restart
+POST   /api/restart (renamed to shutdown in UI)
+GET    /api/uuid-lookup?username={username}
 ```
 
 ### New Plugin Endpoints
