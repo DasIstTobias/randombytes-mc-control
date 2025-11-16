@@ -19,6 +19,7 @@ public class MCControlPlugin extends JavaPlugin {
     private APIServer apiServer;
     private MetricsCollector metricsCollector;
     private PlayerDataManager playerDataManager;
+    private CustomRecipeManager customRecipeManager;
     
     private String apiKey;
     private int port;
@@ -46,6 +47,7 @@ public class MCControlPlugin extends JavaPlugin {
         // Initialize managers
         metricsCollector = new MetricsCollector(this);
         playerDataManager = new PlayerDataManager(this);
+        customRecipeManager = new CustomRecipeManager(this);
         
         // Attach console log handler to capture server logs
         attachConsoleLogHandler();
@@ -166,6 +168,10 @@ public class MCControlPlugin extends JavaPlugin {
     
     public PlayerDataManager getPlayerDataManager() {
         return playerDataManager;
+    }
+    
+    public CustomRecipeManager getCustomRecipeManager() {
+        return customRecipeManager;
     }
     
     private void attachConsoleLogHandler() {

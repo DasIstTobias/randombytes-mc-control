@@ -30,6 +30,9 @@
                 <li><a href="#" class="nav-link" data-page="console">Console</a></li>
                 <li><a href="#" class="nav-link" data-page="chat">Chat</a></li>
                 <li><a href="#" class="nav-link" data-page="settings">Server Settings</a></li>
+                
+                <li class="nav-section-title"># MODS</li>
+                <li><a href="#" class="nav-link" data-page="custom-recipes">Custom Recipes</a></li>
             </ul>
         </nav>
 
@@ -75,6 +78,9 @@
             <div id="players-page" class="page">
                 <h2>Players</h2>
                 <p class="subtitle">All players who have joined the server</p>
+                <div class="form-section">
+                    <input type="text" id="player-search" placeholder="Search by name or UUID..." autocomplete="off">
+                </div>
                 <div class="table-container">
                     <table id="players-table">
                         <thead>
@@ -234,6 +240,71 @@
                 <div class="form-section" style="margin-top: 1.5rem;">
                     <h3>Game Rules</h3>
                     <div id="gamerules-form"></div>
+                </div>
+            </div>
+
+            <!-- Custom Recipes Page -->
+            <div id="custom-recipes-page" class="page">
+                <h2>Custom Crafting Recipes</h2>
+                <p class="subtitle">Create and manage custom crafting recipes</p>
+                
+                <div class="form-section">
+                    <h3>Add New Recipe</h3>
+                    <form id="recipe-form">
+                        <div class="recipe-type-selector">
+                            <label>
+                                <input type="radio" name="recipe-type" value="shaped" checked>
+                                Shaped (exact position required)
+                            </label>
+                            <label>
+                                <input type="radio" name="recipe-type" value="shapeless">
+                                Shapeless (any position)
+                            </label>
+                        </div>
+                        
+                        <div class="crafting-grid-container">
+                            <h4>Ingredients (3×3 Crafting Grid)</h4>
+                            <div class="crafting-grid" id="crafting-grid">
+                                <input type="text" placeholder="Item ID" data-slot="0" class="crafting-slot">
+                                <input type="text" placeholder="Item ID" data-slot="1" class="crafting-slot">
+                                <input type="text" placeholder="Item ID" data-slot="2" class="crafting-slot">
+                                <input type="text" placeholder="Item ID" data-slot="3" class="crafting-slot">
+                                <input type="text" placeholder="Item ID" data-slot="4" class="crafting-slot">
+                                <input type="text" placeholder="Item ID" data-slot="5" class="crafting-slot">
+                                <input type="text" placeholder="Item ID" data-slot="6" class="crafting-slot">
+                                <input type="text" placeholder="Item ID" data-slot="7" class="crafting-slot">
+                                <input type="text" placeholder="Item ID" data-slot="8" class="crafting-slot">
+                            </div>
+                        </div>
+                        
+                        <div class="recipe-result">
+                            <h4>Result</h4>
+                            <div class="result-inputs">
+                                <input type="text" id="result-item" placeholder="Result Item ID" required>
+                                <input type="number" id="result-count" placeholder="Count" value="1" min="1" max="64" required>
+                            </div>
+                        </div>
+                        
+                        <div class="recipe-actions">
+                            <button type="submit" id="save-recipe-btn">Save Recipe</button>
+                            <button type="button" id="clear-recipe-btn">Clear</button>
+                        </div>
+                    </form>
+                </div>
+                
+                <div class="table-container" style="margin-top: 2rem;">
+                    <h3>Existing Recipes</h3>
+                    <table id="recipes-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Type</th>
+                                <th>Result</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recipes-list"></tbody>
+                    </table>
                 </div>
             </div>
         </main>

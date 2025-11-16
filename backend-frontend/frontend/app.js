@@ -102,6 +102,9 @@ async function customPrompt(message, placeholder = '') {
 let isOffline = false;
 let offlineCheckInterval = null;
 
+// Track failed player head image loads to prevent infinite retries
+const failedPlayerHeads = new Set();
+
 function showOfflineOverlay() {
     if (!isOffline) {
         isOffline = true;
@@ -268,6 +271,9 @@ async function loadPage(page) {
             case 'settings':
                 await loadSettings();
                 break;
+            case 'custom-recipes':
+                await loadCustomRecipes();
+                break;
         }
     } catch (error) {
         console.error('Error loading page:', error);
@@ -337,15 +343,22 @@ async function loadSidebarServerInfo() {
 
 async function updateStatus() {
     try {
-        const [metricsData, serverData] = await Promise.all([
+        const [metricsData, serverData, playersData] = await Promise.all([
             API.get('/metrics'),
-            API.get('/server')
+            API.get('/server'),
+            API.get('/players')
         ]);
         
         if (metricsData.metrics && metricsData.metrics.length > 0) {
             const latest = metricsData.metrics[metricsData.metrics.length - 1];
             
-            document.getElementById('current-players').textContent = latest.players || 0;
+            // Use actual count of online players from players API for accuracy
+            let onlineCount = 0;
+            if (playersData && playersData.players) {
+                onlineCount = playersData.players.filter(p => p.online).length;
+            }
+            
+            document.getElementById('current-players').textContent = onlineCount;
             document.getElementById('current-tps').textContent = (latest.tps || 0).toFixed(1);
             document.getElementById('current-memory').textContent = (latest.memory || 0).toFixed(1) + '%';
             document.getElementById('current-cpu').textContent = (latest.cpu || 0).toFixed(1) + '%';
@@ -360,7 +373,7 @@ async function updateStatus() {
                 updateServerIdentityHeader(serverData);
             }
             
-            // Update chart
+            // Update chart - use metrics data for historical display
             updateMetricsChart(metricsData.metrics, maxPlayers);
         }
     } catch (error) {
@@ -566,40 +579,84 @@ document.getElementById('shutdown-server-btn').addEventListener('click', async (
 });
 
 // Players
+let allPlayers = []; // Store all players for search filtering
+
 async function loadPlayers() {
     try {
         const data = await API.get('/players');
-        const tbody = document.getElementById('players-list');
-        tbody.innerHTML = '';
-        
-        if (data.players && data.players.length > 0) {
-            data.players.forEach(player => {
-                const row = document.createElement('tr');
-                
-                const statusClass = player.online ? 'online' : 'offline';
-                const statusText = player.online ? 'Online' : 'Offline';
-                const playTime = formatPlayTime(player.playTime);
-                const playerHeadUrl = `/api/player-head/${player.uuid}`;
-                
-                row.innerHTML = `
-                    <td><img src="${playerHeadUrl}" class="player-head" alt="${escapeHtml(player.name)}" onerror="this.style.display='none'">${escapeHtml(player.name)}</td>
-                    <td><span class="status ${statusClass}">${statusText}</span></td>
-                    <td>${playTime}</td>
-                    <td>
-                        <button onclick="showPlayerInventory('${player.uuid}', '${escapeHtml(player.name)}')">Inventory</button>
-                        <button class="danger" onclick="toggleBan('${player.uuid}', ${player.banned})">${player.banned ? 'Unban' : 'Ban'}</button>
-                        <button onclick="toggleOp('${player.uuid}', ${player.op || false})">${player.op ? 'DeOP' : 'OP'}</button>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
-        } else {
-            tbody.innerHTML = '<tr><td colspan="4">No players found</td></tr>';
-        }
+        allPlayers = data.players || [];
+        renderPlayers(allPlayers);
     } catch (error) {
         console.error('Error loading players:', error);
     }
 }
+
+function renderPlayers(players) {
+    const tbody = document.getElementById('players-list');
+    tbody.innerHTML = '';
+    
+    if (players && players.length > 0) {
+        players.forEach(player => {
+            const row = document.createElement('tr');
+            
+            const statusClass = player.online ? 'online' : 'offline';
+            const statusText = player.online ? 'Online' : 'Offline';
+            const playTime = formatPlayTime(player.playTime);
+            const playerHeadUrl = `/api/player-head/${player.uuid}`;
+            
+            // Check if this image has failed before
+            const shouldTryImage = !failedPlayerHeads.has(player.uuid);
+            const imageHtml = shouldTryImage 
+                ? `<img src="${playerHeadUrl}" class="player-head" alt="${escapeHtml(player.name)}" onerror="handlePlayerHeadError('${player.uuid}', this)">` 
+                : '';
+            
+            row.innerHTML = `
+                <td>${imageHtml}${escapeHtml(player.name)}</td>
+                <td><span class="status ${statusClass}">${statusText}</span></td>
+                <td>${playTime}</td>
+                <td>
+                    <button onclick="showPlayerInventory('${player.uuid}', '${escapeHtml(player.name)}')">Inventory</button>
+                    <button class="danger" onclick="toggleBan('${player.uuid}', ${player.banned})">${player.banned ? 'Unban' : 'Ban'}</button>
+                    <button onclick="toggleOp('${player.uuid}', ${player.op || false})">${player.op ? 'DeOP' : 'OP'}</button>
+                </td>
+            `;
+            row.dataset.uuid = player.uuid;
+            row.dataset.name = player.name.toLowerCase();
+            tbody.appendChild(row);
+        });
+    } else {
+        tbody.innerHTML = '<tr><td colspan="4">No players found</td></tr>';
+    }
+}
+
+function handlePlayerHeadError(uuid, imgElement) {
+    // Mark this UUID as failed
+    failedPlayerHeads.add(uuid);
+    // Hide the image
+    imgElement.style.display = 'none';
+}
+
+// Player search functionality
+document.addEventListener('DOMContentLoaded', () => {
+    const searchInput = document.getElementById('player-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase().trim();
+            
+            if (!searchTerm) {
+                renderPlayers(allPlayers);
+                return;
+            }
+            
+            const filtered = allPlayers.filter(player => 
+                player.name.toLowerCase().includes(searchTerm) || 
+                player.uuid.toLowerCase().includes(searchTerm)
+            );
+            
+            renderPlayers(filtered);
+        });
+    }
+});
 
 async function showPlayerInventory(uuid, name) {
     try {
@@ -1324,6 +1381,183 @@ async function saveGameRules() {
 document.querySelector('.close').addEventListener('click', () => {
     document.getElementById('player-modal').classList.remove('active');
 });
+
+// Custom Recipes
+let editingRecipeId = null;
+
+async function loadCustomRecipes() {
+    try {
+        const data = await API.get('/recipes');
+        renderRecipesList(data.recipes || []);
+    } catch (error) {
+        console.error('Error loading recipes:', error);
+        // If endpoint doesn't exist yet, show empty list
+        renderRecipesList([]);
+    }
+}
+
+function renderRecipesList(recipes) {
+    const tbody = document.getElementById('recipes-list');
+    tbody.innerHTML = '';
+    
+    if (recipes && recipes.length > 0) {
+        recipes.forEach(recipe => {
+            const row = document.createElement('tr');
+            const recipeType = recipe.shaped ? 'Shaped' : 'Shapeless';
+            const resultDisplay = `${recipe.result.item} ×${recipe.result.count}`;
+            
+            row.innerHTML = `
+                <td>${escapeHtml(recipe.id)}</td>
+                <td>${recipeType}</td>
+                <td>${escapeHtml(resultDisplay)}</td>
+                <td>
+                    <button onclick="editRecipe('${recipe.id}')">Edit</button>
+                    <button class="danger" onclick="deleteRecipe('${recipe.id}')">Delete</button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    } else {
+        tbody.innerHTML = '<tr><td colspan="4">No custom recipes yet</td></tr>';
+    }
+}
+
+async function editRecipe(recipeId) {
+    try {
+        const data = await API.get(`/recipe/${recipeId}`);
+        if (data.recipe) {
+            editingRecipeId = recipeId;
+            
+            // Set recipe type
+            const typeRadio = document.querySelector(`input[name="recipe-type"][value="${data.recipe.shaped ? 'shaped' : 'shapeless'}"]`);
+            if (typeRadio) typeRadio.checked = true;
+            
+            // Fill crafting grid
+            const slots = document.querySelectorAll('.crafting-slot');
+            slots.forEach((slot, index) => {
+                slot.value = data.recipe.ingredients[index] || '';
+            });
+            
+            // Fill result
+            document.getElementById('result-item').value = data.recipe.result.item;
+            document.getElementById('result-count').value = data.recipe.result.count;
+            
+            // Update button text
+            document.getElementById('save-recipe-btn').textContent = 'Update Recipe';
+            
+            // Scroll to form
+            document.getElementById('recipe-form').scrollIntoView({ behavior: 'smooth' });
+        }
+    } catch (error) {
+        console.error('Error loading recipe for edit:', error);
+        await customAlert('Failed to load recipe');
+    }
+}
+
+async function deleteRecipe(recipeId) {
+    const confirmed = await customConfirm(`Are you sure you want to delete recipe "${recipeId}"?`);
+    if (!confirmed) return;
+    
+    try {
+        await API.delete(`/recipe/${recipeId}`);
+        await customAlert('Recipe deleted successfully');
+        await loadCustomRecipes();
+    } catch (error) {
+        console.error('Error deleting recipe:', error);
+        await customAlert('Failed to delete recipe');
+    }
+}
+
+// Recipe form handling
+document.addEventListener('DOMContentLoaded', () => {
+    const recipeForm = document.getElementById('recipe-form');
+    const clearBtn = document.getElementById('clear-recipe-btn');
+    
+    if (recipeForm) {
+        recipeForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const recipeType = document.querySelector('input[name="recipe-type"]:checked').value;
+            const shaped = recipeType === 'shaped';
+            
+            // Collect ingredients
+            const ingredients = [];
+            document.querySelectorAll('.crafting-slot').forEach(slot => {
+                const value = slot.value.trim();
+                ingredients.push(value || null);
+            });
+            
+            // Validate that at least one ingredient is provided
+            if (ingredients.every(i => !i)) {
+                await customAlert('Please add at least one ingredient');
+                return;
+            }
+            
+            // Get result
+            const resultItem = document.getElementById('result-item').value.trim();
+            const resultCount = parseInt(document.getElementById('result-count').value) || 1;
+            
+            if (!resultItem) {
+                await customAlert('Please specify a result item');
+                return;
+            }
+            
+            // Validate item IDs (basic validation)
+            const allItems = [...ingredients.filter(i => i), resultItem];
+            for (const item of allItems) {
+                if (!/^[a-z0-9_:]+$/.test(item)) {
+                    await customAlert(`Invalid item ID: "${item}". Use only lowercase letters, numbers, underscores, and colons (e.g., "minecraft:diamond")`);
+                    return;
+                }
+            }
+            
+            const recipe = {
+                shaped,
+                ingredients,
+                result: {
+                    item: resultItem,
+                    count: resultCount
+                }
+            };
+            
+            try {
+                if (editingRecipeId) {
+                    await API.post(`/recipe/${editingRecipeId}`, recipe);
+                    await customAlert('Recipe updated successfully');
+                    editingRecipeId = null;
+                    document.getElementById('save-recipe-btn').textContent = 'Save Recipe';
+                } else {
+                    await API.post('/recipes', recipe);
+                    await customAlert('Recipe created successfully');
+                }
+                
+                // Clear form
+                clearRecipeForm();
+                
+                // Reload recipes list
+                await loadCustomRecipes();
+            } catch (error) {
+                console.error('Error saving recipe:', error);
+                await customAlert('Failed to save recipe: ' + (error.message || 'Unknown error'));
+            }
+        });
+    }
+    
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            clearRecipeForm();
+        });
+    }
+});
+
+function clearRecipeForm() {
+    document.querySelectorAll('.crafting-slot').forEach(slot => slot.value = '');
+    document.getElementById('result-item').value = '';
+    document.getElementById('result-count').value = '1';
+    document.querySelector('input[name="recipe-type"][value="shaped"]').checked = true;
+    editingRecipeId = null;
+    document.getElementById('save-recipe-btn').textContent = 'Save Recipe';
+}
 
 window.addEventListener('click', (e) => {
     const modal = document.getElementById('player-modal');

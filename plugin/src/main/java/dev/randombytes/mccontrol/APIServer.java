@@ -55,6 +55,8 @@ public class APIServer {
             server.createContext("/api/chat", new ChatHandler());
             server.createContext("/api/settings", new SettingsHandler());
             server.createContext("/api/restart", new RestartHandler());
+            server.createContext("/api/recipes", new RecipesHandler());
+            server.createContext("/api/recipe", new RecipeHandler());
             
             server.setExecutor(null);
             server.start();
@@ -743,6 +745,109 @@ public class APIServer {
                 }, 20L); // 1 second delay
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error shutting down server", e);
+                sendError(exchange, 500, "Internal server error");
+            }
+        }
+    }
+    
+    // Recipes handler
+    private class RecipesHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!validateAuth(exchange)) {
+                sendError(exchange, 401, "Unauthorized");
+                return;
+            }
+            
+            try {
+                String method = exchange.getRequestMethod();
+                
+                if ("GET".equals(method)) {
+                    JsonObject recipes = plugin.getCustomRecipeManager().getAllRecipes();
+                    sendResponse(exchange, 200, plugin.getGson().toJson(recipes));
+                } else if ("POST".equals(method)) {
+                    String body = readRequestBody(exchange);
+                    JsonObject recipeData = plugin.getGson().fromJson(body, JsonObject.class);
+                    
+                    JsonObject result = plugin.getCustomRecipeManager().createRecipe(recipeData);
+                    
+                    if (result.has("error")) {
+                        sendResponse(exchange, 400, plugin.getGson().toJson(result));
+                    } else {
+                        sendResponse(exchange, 200, plugin.getGson().toJson(result));
+                    }
+                } else {
+                    sendError(exchange, 405, "Method not allowed");
+                }
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.SEVERE, "Error handling recipes request", e);
+                sendError(exchange, 500, "Internal server error");
+            }
+        }
+    }
+    
+    // Recipe handler (single recipe operations)
+    private class RecipeHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!validateAuth(exchange)) {
+                sendError(exchange, 401, "Unauthorized");
+                return;
+            }
+            
+            try {
+                String method = exchange.getRequestMethod();
+                String query = exchange.getRequestURI().getQuery();
+                String id = null;
+                
+                if (query != null) {
+                    String[] params = query.split("&");
+                    for (String param : params) {
+                        String[] keyValue = param.split("=");
+                        if (keyValue.length == 2 && "id".equals(keyValue[0])) {
+                            id = java.net.URLDecoder.decode(keyValue[1], "UTF-8");
+                            break;
+                        }
+                    }
+                }
+                
+                if (id == null) {
+                    sendError(exchange, 400, "Recipe ID required");
+                    return;
+                }
+                
+                if ("GET".equals(method)) {
+                    JsonObject recipe = plugin.getCustomRecipeManager().getRecipe(id);
+                    
+                    if (recipe.has("error")) {
+                        sendResponse(exchange, 404, plugin.getGson().toJson(recipe));
+                    } else {
+                        sendResponse(exchange, 200, plugin.getGson().toJson(recipe));
+                    }
+                } else if ("POST".equals(method)) {
+                    String body = readRequestBody(exchange);
+                    JsonObject recipeData = plugin.getGson().fromJson(body, JsonObject.class);
+                    
+                    JsonObject result = plugin.getCustomRecipeManager().updateRecipe(id, recipeData);
+                    
+                    if (result.has("error")) {
+                        sendResponse(exchange, 400, plugin.getGson().toJson(result));
+                    } else {
+                        sendResponse(exchange, 200, plugin.getGson().toJson(result));
+                    }
+                } else if ("DELETE".equals(method)) {
+                    JsonObject result = plugin.getCustomRecipeManager().deleteRecipe(id);
+                    
+                    if (result.has("error")) {
+                        sendResponse(exchange, 404, plugin.getGson().toJson(result));
+                    } else {
+                        sendResponse(exchange, 200, plugin.getGson().toJson(result));
+                    }
+                } else {
+                    sendError(exchange, 405, "Method not allowed");
+                }
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.SEVERE, "Error handling recipe request", e);
                 sendError(exchange, 500, "Internal server error");
             }
         }

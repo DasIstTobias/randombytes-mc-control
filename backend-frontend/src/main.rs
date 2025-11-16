@@ -99,6 +99,12 @@ async fn main() {
         .route("/api/restart", post(restart_server))
         .route("/api/uuid-lookup", get(uuid_lookup))
         .route("/api/player-head/:uuid", get(get_player_head))
+        // Custom recipes endpoints
+        .route("/api/recipes", get(get_recipes))
+        .route("/api/recipes", post(create_recipe))
+        .route("/api/recipe/:id", get(get_recipe))
+        .route("/api/recipe/:id", post(update_recipe))
+        .route("/api/recipe/:id", axum::routing::delete(delete_recipe))
         // Serve frontend
         .nest_service("/", ServeDir::new("frontend"))
         .with_state(state.clone());
@@ -594,6 +600,76 @@ async fn get_server_icon(
         }
         Err(e) => {
             error!("Failed to fetch server icon: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+// Custom Recipes handlers
+
+async fn get_recipes(State(state): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.get_recipes().await {
+        Ok(recipes) => Ok(Json(recipes)),
+        Err(e) => {
+            error!("Failed to get recipes: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn create_recipe(
+    State(state): State<AppState>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.create_recipe(payload).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to create recipe: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn get_recipe(
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.get_recipe(&id).await {
+        Ok(recipe) => Ok(Json(recipe)),
+        Err(e) => {
+            error!("Failed to get recipe: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn update_recipe(
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.update_recipe(&id, payload).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to update recipe: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn delete_recipe(
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.delete_recipe(&id).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to delete recipe: {}", e);
             Err(ApiError::PluginError(e.to_string()))
         }
     }

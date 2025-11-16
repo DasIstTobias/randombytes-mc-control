@@ -65,6 +65,22 @@ impl PluginClient {
         Ok(response.json().await?)
     }
 
+    async fn delete(&self, endpoint: &str) -> Result<Value, Box<dyn Error>> {
+        let url = format!("{}{}", self.base_url, endpoint);
+        let response = self
+            .client
+            .delete(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(format!("Request failed: {}", response.status()).into());
+        }
+
+        Ok(response.json().await?)
+    }
+
     pub async fn get_metrics(&self) -> Result<Value, Box<dyn Error>> {
         self.get("/metrics").await
     }
@@ -229,5 +245,26 @@ impl PluginClient {
     
     pub async fn get_server_icon(&self) -> Result<Value, Box<dyn Error>> {
         self.get("/server-icon").await
+    }
+
+    // Custom recipes methods
+    pub async fn get_recipes(&self) -> Result<Value, Box<dyn Error>> {
+        self.get("/recipes").await
+    }
+
+    pub async fn create_recipe(&self, recipe: Value) -> Result<Value, Box<dyn Error>> {
+        self.post("/recipes", recipe).await
+    }
+
+    pub async fn get_recipe(&self, id: &str) -> Result<Value, Box<dyn Error>> {
+        self.get(&format!("/recipe?id={}", id)).await
+    }
+
+    pub async fn update_recipe(&self, id: &str, recipe: Value) -> Result<Value, Box<dyn Error>> {
+        self.post(&format!("/recipe?id={}", id), recipe).await
+    }
+
+    pub async fn delete_recipe(&self, id: &str) -> Result<Value, Box<dyn Error>> {
+        self.delete(&format!("/recipe?id={}", id)).await
     }
 }
