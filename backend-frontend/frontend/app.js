@@ -117,7 +117,18 @@ document.querySelectorAll('.nav-link').forEach(link => {
 });
 
 // Page loaders
+let currentPage = 'status';
+let pageRefreshInterval = null;
+
 async function loadPage(page) {
+    // Clear any existing refresh interval
+    if (pageRefreshInterval) {
+        clearInterval(pageRefreshInterval);
+        pageRefreshInterval = null;
+    }
+    
+    currentPage = page;
+    
     try {
         switch(page) {
             case 'status':
@@ -126,6 +137,8 @@ async function loadPage(page) {
                 break;
             case 'players':
                 await loadPlayers();
+                // Auto-refresh every second
+                pageRefreshInterval = setInterval(loadPlayers, 1000);
                 break;
             case 'whitelist':
                 await loadWhitelist();
@@ -138,9 +151,13 @@ async function loadPage(page) {
                 break;
             case 'plugins':
                 await loadPlugins();
+                // Auto-refresh every second
+                pageRefreshInterval = setInterval(loadPlugins, 1000);
                 break;
             case 'server':
                 await loadServerInfo();
+                // Auto-refresh every second
+                pageRefreshInterval = setInterval(loadServerInfo, 1000);
                 break;
             case 'console':
                 await loadConsole();
@@ -201,7 +218,7 @@ function updateMetricsChart(metrics) {
     
     const width = canvas.width;
     const height = canvas.offsetHeight;
-    const padding = 40;
+    const padding = 60; // Increased for percentage labels
     const graphWidth = width - padding * 2;
     const graphHeight = height - padding * 2;
     
@@ -213,15 +230,26 @@ function updateMetricsChart(metrics) {
     const maxTPS = 20;
     const maxMemory = 100;
     
-    // Draw grid
+    // Set font for labels
+    ctx.font = '12px monospace';
+    ctx.fillStyle = '#999';
+    
+    // Draw grid and percentage labels
     ctx.strokeStyle = '#333';
     ctx.lineWidth = 1;
     for (let i = 0; i <= 5; i++) {
         const y = padding + (graphHeight / 5) * i;
+        const percentage = 100 - (i * 20); // 100%, 80%, 60%, 40%, 20%, 0%
+        
+        // Draw grid line
         ctx.beginPath();
         ctx.moveTo(padding, y);
         ctx.lineTo(width - padding, y);
         ctx.stroke();
+        
+        // Draw percentage label on left
+        ctx.textAlign = 'right';
+        ctx.fillText(`${percentage}%`, padding - 10, y + 4);
     }
     
     // Draw TPS line
@@ -250,6 +278,7 @@ function updateMetricsChart(metrics) {
     
     // Draw legend
     ctx.font = '12px monospace';
+    ctx.textAlign = 'left';
     ctx.fillStyle = '#4a9';
     ctx.fillText('TPS', padding, 20);
     ctx.fillStyle = '#d44';
@@ -285,9 +314,10 @@ async function loadPlayers() {
                 const statusClass = player.online ? 'online' : 'offline';
                 const statusText = player.online ? 'Online' : 'Offline';
                 const playTime = formatPlayTime(player.playTime);
+                const playerHeadUrl = `https://crafatar.com/avatars/${player.uuid.replace(/-/g, '')}?size=24&overlay`;
                 
                 row.innerHTML = `
-                    <td>${escapeHtml(player.name)}</td>
+                    <td><img src="${playerHeadUrl}" class="player-head" alt="${escapeHtml(player.name)}" onerror="this.style.display='none'">${escapeHtml(player.name)}</td>
                     <td><span class="status ${statusClass}">${statusText}</span></td>
                     <td>${playTime}</td>
                     <td>
@@ -381,8 +411,9 @@ async function updateWhitelist() {
         if (data.whitelist && data.whitelist.length > 0) {
             data.whitelist.forEach(entry => {
                 const row = document.createElement('tr');
+                const playerHeadUrl = `https://crafatar.com/avatars/${entry.uuid.replace(/-/g, '')}?size=24&overlay`;
                 row.innerHTML = `
-                    <td>${escapeHtml(entry.name)}</td>
+                    <td><img src="${playerHeadUrl}" class="player-head" alt="${escapeHtml(entry.name)}" onerror="this.style.display='none'">${escapeHtml(entry.name)}</td>
                     <td><code>${entry.uuid}</code></td>
                     <td><button class="danger" onclick="removeFromWhitelist('${entry.uuid}', '${escapeHtml(entry.name)}')">Remove</button></td>
                 `;
@@ -455,8 +486,9 @@ async function updateBlacklist() {
         if (data.blacklist && data.blacklist.length > 0) {
             data.blacklist.forEach(entry => {
                 const row = document.createElement('tr');
+                const playerHeadUrl = `https://crafatar.com/avatars/${entry.uuid.replace(/-/g, '')}?size=24&overlay`;
                 row.innerHTML = `
-                    <td>${escapeHtml(entry.name)}</td>
+                    <td><img src="${playerHeadUrl}" class="player-head" alt="${escapeHtml(entry.name)}" onerror="this.style.display='none'">${escapeHtml(entry.name)}</td>
                     <td><code>${entry.uuid}</code></td>
                     <td><button class="danger" onclick="removeFromBlacklist('${entry.uuid}', '${escapeHtml(entry.name)}')">Remove</button></td>
                 `;
@@ -529,8 +561,9 @@ async function updateOps() {
         if (data.ops && data.ops.length > 0) {
             data.ops.forEach(entry => {
                 const row = document.createElement('tr');
+                const playerHeadUrl = `https://crafatar.com/avatars/${entry.uuid.replace(/-/g, '')}?size=24&overlay`;
                 row.innerHTML = `
-                    <td>${escapeHtml(entry.name)}</td>
+                    <td><img src="${playerHeadUrl}" class="player-head" alt="${escapeHtml(entry.name)}" onerror="this.style.display='none'">${escapeHtml(entry.name)}</td>
                     <td><code>${entry.uuid}</code></td>
                     <td><button class="danger" onclick="removeFromOps('${entry.uuid}', '${escapeHtml(entry.name)}')">Remove</button></td>
                 `;
@@ -781,27 +814,35 @@ async function loadSettings() {
     try {
         const data = await API.get('/settings');
         
-        // Render server properties
+        // Render server properties with organized sections
         const propsContainer = document.getElementById('server-properties-form');
         propsContainer.innerHTML = '';
         
         if (data.properties) {
-            for (const [key, value] of Object.entries(data.properties)) {
-                const formGroup = document.createElement('div');
-                formGroup.className = 'form-group';
+            // Define property categories
+            const categories = {
+                'Basic Settings': ['motd', 'max-players', 'difficulty', 'whitelist'],
+                'Network Settings': ['online-mode', 'allow-flight', 'allow-nether', 'allow-end'],
+            };
+            
+            // Render categorized properties
+            for (const [categoryName, keys] of Object.entries(categories)) {
+                const section = document.createElement('div');
+                section.className = 'settings-section';
                 
-                const label = document.createElement('label');
-                label.textContent = key.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                const heading = document.createElement('h4');
+                heading.textContent = categoryName;
+                section.appendChild(heading);
                 
-                const input = document.createElement('input');
-                input.type = 'text';
-                input.value = value;
-                input.id = `prop-${key}`;
-                input.dataset.key = key;
+                for (const key of keys) {
+                    if (data.properties.hasOwnProperty(key)) {
+                        const value = data.properties[key];
+                        const formGroup = createSettingInput(key, value, 'prop');
+                        section.appendChild(formGroup);
+                    }
+                }
                 
-                formGroup.appendChild(label);
-                formGroup.appendChild(input);
-                propsContainer.appendChild(formGroup);
+                propsContainer.appendChild(section);
             }
             
             const saveBtn = document.createElement('button');
@@ -811,27 +852,58 @@ async function loadSettings() {
             propsContainer.appendChild(saveBtn);
         }
         
-        // Render game rules
+        // Render game rules with organized sections
         const rulesContainer = document.getElementById('gamerules-form');
         rulesContainer.innerHTML = '';
         
         if (data.gamerules) {
+            // Group gamerules by category
+            const ruleCategories = {
+                'Mob Behaviour': ['doMobSpawning', 'doMobLoot', 'mobGriefing', 'doPatrolSpawning', 'doTraderSpawning', 'doWardenSpawning'],
+                'Player Settings': ['keepInventory', 'doImmediateRespawn', 'playersSleepingPercentage', 'naturalRegeneration', 'showDeathMessages'],
+                'World Settings': ['doDaylightCycle', 'doWeatherCycle', 'randomTickSpeed', 'spawnRadius'],
+                'Block & Fire': ['doFireTick', 'doTileDrops', 'tntExplodes'],
+                'Other': []
+            };
+            
+            // Sort gamerules into categories
+            const sortedRules = {};
+            const usedKeys = new Set();
+            
+            for (const [category, keys] of Object.entries(ruleCategories)) {
+                sortedRules[category] = [];
+                for (const key of keys) {
+                    if (data.gamerules.hasOwnProperty(key)) {
+                        sortedRules[category].push([key, data.gamerules[key]]);
+                        usedKeys.add(key);
+                    }
+                }
+            }
+            
+            // Add remaining rules to "Other"
             for (const [key, value] of Object.entries(data.gamerules)) {
-                const formGroup = document.createElement('div');
-                formGroup.className = 'form-group';
+                if (!usedKeys.has(key)) {
+                    sortedRules['Other'].push([key, value]);
+                }
+            }
+            
+            // Render categorized game rules
+            for (const [categoryName, rules] of Object.entries(sortedRules)) {
+                if (rules.length === 0) continue;
                 
-                const label = document.createElement('label');
-                label.textContent = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                const section = document.createElement('div');
+                section.className = 'settings-section';
                 
-                const input = document.createElement('input');
-                input.type = 'text';
-                input.value = value;
-                input.id = `rule-${key}`;
-                input.dataset.key = key;
+                const heading = document.createElement('h4');
+                heading.textContent = categoryName;
+                section.appendChild(heading);
                 
-                formGroup.appendChild(label);
-                formGroup.appendChild(input);
-                rulesContainer.appendChild(formGroup);
+                for (const [key, value] of rules) {
+                    const formGroup = createSettingInput(key, value, 'rule');
+                    section.appendChild(formGroup);
+                }
+                
+                rulesContainer.appendChild(section);
             }
             
             const saveBtn = document.createElement('button');
@@ -845,11 +917,81 @@ async function loadSettings() {
     }
 }
 
+function createSettingInput(key, value, prefix) {
+    const formGroup = document.createElement('div');
+    formGroup.className = 'form-group';
+    
+    const label = document.createElement('label');
+    label.textContent = key.replace(/-/g, ' ').replace(/([A-Z])/g, ' $1').replace(/\b\w/g, l => l.toUpperCase());
+    formGroup.appendChild(label);
+    
+    const valueStr = String(value).toLowerCase();
+    
+    // Check if boolean
+    if (valueStr === 'true' || valueStr === 'false') {
+        const toggleContainer = document.createElement('div');
+        toggleContainer.className = 'toggle-container';
+        
+        const falseLabel = document.createElement('span');
+        falseLabel.className = 'toggle-label';
+        falseLabel.textContent = 'false';
+        
+        const switchLabel = document.createElement('label');
+        switchLabel.className = 'toggle-switch';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = valueStr === 'true';
+        checkbox.id = `${prefix}-${key}`;
+        checkbox.dataset.key = key;
+        
+        const slider = document.createElement('span');
+        slider.className = 'toggle-slider';
+        
+        switchLabel.appendChild(checkbox);
+        switchLabel.appendChild(slider);
+        
+        const trueLabel = document.createElement('span');
+        trueLabel.className = 'toggle-label';
+        trueLabel.textContent = 'true';
+        
+        toggleContainer.appendChild(falseLabel);
+        toggleContainer.appendChild(switchLabel);
+        toggleContainer.appendChild(trueLabel);
+        
+        formGroup.appendChild(toggleContainer);
+    }
+    // Check if number
+    else if (!isNaN(value) && value !== '') {
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.value = value;
+        input.id = `${prefix}-${key}`;
+        input.dataset.key = key;
+        formGroup.appendChild(input);
+    }
+    // Text field
+    else {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = value;
+        input.id = `${prefix}-${key}`;
+        input.dataset.key = key;
+        formGroup.appendChild(input);
+    }
+    
+    return formGroup;
+}
+
 async function saveServerProperties() {
     const properties = {};
-    document.querySelectorAll('#server-properties-form input').forEach(input => {
+    document.querySelectorAll('#server-properties-form input, #server-properties-form input[type="checkbox"]').forEach(input => {
         if (input.dataset.key) {
-            properties[input.dataset.key] = input.value;
+            if (input.type === 'checkbox') {
+                properties[input.dataset.key] = input.checked;
+            } else {
+                properties[input.dataset.key] = input.value;
+            }
         }
     });
     
@@ -864,9 +1006,13 @@ async function saveServerProperties() {
 
 async function saveGameRules() {
     const gamerules = {};
-    document.querySelectorAll('#gamerules-form input').forEach(input => {
+    document.querySelectorAll('#gamerules-form input, #gamerules-form input[type="checkbox"]').forEach(input => {
         if (input.dataset.key) {
-            gamerules[input.dataset.key] = input.value;
+            if (input.type === 'checkbox') {
+                gamerules[input.dataset.key] = input.checked;
+            } else {
+                gamerules[input.dataset.key] = input.value;
+            }
         }
     });
     

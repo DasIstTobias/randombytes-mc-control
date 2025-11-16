@@ -452,7 +452,16 @@ async fn uuid_lookup(
     // Fetch UUID from Mojang API
     let url = format!("https://api.mojang.com/users/profiles/minecraft/{}", query.username);
     
-    match reqwest::get(&url).await {
+    // Create a client that accepts invalid certificates (for self-signed certs in cert chain)
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .map_err(|e| {
+            error!("Failed to build HTTP client: {}", e);
+            ApiError::PluginError("Failed to create HTTP client".to_string())
+        })?;
+    
+    match client.get(&url).send().await {
         Ok(response) => {
             if response.status().is_success() {
                 match response.json::<serde_json::Value>().await {
