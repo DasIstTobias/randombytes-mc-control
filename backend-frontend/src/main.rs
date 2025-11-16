@@ -92,6 +92,7 @@ async fn main() {
         .route("/api/settings/gamerules", post(update_gamerules))
         .route("/api/restart", post(restart_server))
         .route("/api/uuid-lookup", get(uuid_lookup))
+        .route("/api/player-head/:uuid", get(get_player_head))
         // Serve frontend
         .nest_service("/", ServeDir::new("frontend"))
         .with_state(state);
@@ -496,6 +497,51 @@ async fn uuid_lookup(
         Err(e) => {
             error!("Failed to fetch UUID from Mojang API: {}", e);
             Err(ApiError::PluginError("Failed to fetch UUID".to_string()))
+        }
+    }
+}
+
+async fn get_player_head(
+    axum::extract::Path(uuid): axum::extract::Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Remove dashes from UUID
+    let uuid_no_dashes = uuid.replace("-", "");
+    
+    // Fetch player head from Crafatar API
+    let url = format!("https://crafatar.com/avatars/{}?size=24&overlay", uuid_no_dashes);
+    
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .map_err(|e| {
+            error!("Failed to build HTTP client: {}", e);
+            ApiError::PluginError("Failed to create HTTP client".to_string())
+        })?;
+    
+    match client.get(&url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                match response.bytes().await {
+                    Ok(bytes) => {
+                        // Return image with proper content type
+                        Ok((
+                            StatusCode::OK,
+                            [(axum::http::header::CONTENT_TYPE, "image/png")],
+                            bytes
+                        ))
+                    }
+                    Err(e) => {
+                        error!("Failed to read player head image: {}", e);
+                        Err(ApiError::PluginError("Failed to read image".to_string()))
+                    }
+                }
+            } else {
+                Err(ApiError::PluginError("Player head not found".to_string()))
+            }
+        }
+        Err(e) => {
+            error!("Failed to fetch player head from Crafatar: {}", e);
+            Err(ApiError::PluginError("Failed to fetch player head".to_string()))
         }
     }
 }

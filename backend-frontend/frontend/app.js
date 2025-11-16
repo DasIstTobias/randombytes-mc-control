@@ -415,7 +415,7 @@ async function loadPlayers() {
                 const statusClass = player.online ? 'online' : 'offline';
                 const statusText = player.online ? 'Online' : 'Offline';
                 const playTime = formatPlayTime(player.playTime);
-                const playerHeadUrl = `https://crafatar.com/avatars/${player.uuid.replace(/-/g, '')}?size=24&overlay`;
+                const playerHeadUrl = `/api/player-head/${player.uuid}`;
                 
                 row.innerHTML = `
                     <td><img src="${playerHeadUrl}" class="player-head" alt="${escapeHtml(player.name)}" onerror="this.style.display='none'">${escapeHtml(player.name)}</td>
@@ -512,7 +512,7 @@ async function updateWhitelist() {
         if (data.whitelist && data.whitelist.length > 0) {
             data.whitelist.forEach(entry => {
                 const row = document.createElement('tr');
-                const playerHeadUrl = `https://crafatar.com/avatars/${entry.uuid.replace(/-/g, '')}?size=24&overlay`;
+                const playerHeadUrl = `/api/player-head/${entry.uuid}`;
                 row.innerHTML = `
                     <td><img src="${playerHeadUrl}" class="player-head" alt="${escapeHtml(entry.name)}" onerror="this.style.display='none'">${escapeHtml(entry.name)}</td>
                     <td><code>${entry.uuid}</code></td>
@@ -588,7 +588,7 @@ async function updateBlacklist() {
         if (data.blacklist && data.blacklist.length > 0) {
             data.blacklist.forEach(entry => {
                 const row = document.createElement('tr');
-                const playerHeadUrl = `https://crafatar.com/avatars/${entry.uuid.replace(/-/g, '')}?size=24&overlay`;
+                const playerHeadUrl = `/api/player-head/${entry.uuid}`;
                 row.innerHTML = `
                     <td><img src="${playerHeadUrl}" class="player-head" alt="${escapeHtml(entry.name)}" onerror="this.style.display='none'">${escapeHtml(entry.name)}</td>
                     <td><code>${entry.uuid}</code></td>
@@ -664,7 +664,7 @@ async function updateOps() {
         if (data.ops && data.ops.length > 0) {
             data.ops.forEach(entry => {
                 const row = document.createElement('tr');
-                const playerHeadUrl = `https://crafatar.com/avatars/${entry.uuid.replace(/-/g, '')}?size=24&overlay`;
+                const playerHeadUrl = `/api/player-head/${entry.uuid}`;
                 row.innerHTML = `
                     <td><img src="${playerHeadUrl}" class="player-head" alt="${escapeHtml(entry.name)}" onerror="this.style.display='none'">${escapeHtml(entry.name)}</td>
                     <td><code>${entry.uuid}</code></td>
