@@ -505,6 +505,11 @@ public class PlayerDataManager {
                 chatLogBuffer.remove(0);
             }
         }
+        
+        // Also add to combined logs
+        if (plugin.getLogManager() != null) {
+            plugin.getLogManager().addLog("CHAT: " + message);
+        }
     }
     
     public void sendChatMessage(String message) {

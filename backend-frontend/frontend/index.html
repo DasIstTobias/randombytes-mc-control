@@ -19,6 +19,7 @@
                 <li><a href="#" class="nav-link active" data-page="status">Status</a></li>
                 <li><a href="#" class="nav-link" data-page="server">Server Info</a></li>
                 <li><a href="#" class="nav-link" data-page="plugins">Plugins</a></li>
+                <li><a href="#" class="nav-link" data-page="logs">Logs</a></li>
                 
                 <li class="nav-section-title"># Player Management</li>
                 <li><a href="#" class="nav-link" data-page="players">Players</a></li>
@@ -51,6 +52,10 @@
                     <div class="metric-card">
                         <h3>Current Players</h3>
                         <div class="metric-value" id="current-players">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <h3>Server Uptime</h3>
+                        <div class="metric-value" id="server-uptime">-</div>
                     </div>
                     <div class="metric-card">
                         <h3>TPS</h3>
@@ -199,6 +204,29 @@
                 <div class="info-divider"></div>
                 <h3 style="margin-bottom: 1rem;">Worlds</h3>
                 <div id="server-worlds" class="info-grid"></div>
+            </div>
+
+            <!-- Logs Page -->
+            <div id="logs-page" class="page">
+                <h2>Server Logs</h2>
+                <p class="subtitle">Combined console and chat logs (last 5000 lines)</p>
+                
+                <div class="logs-controls">
+                    <div class="logs-search-container">
+                        <input type="text" id="logs-search" placeholder="Search logs..." autocomplete="off">
+                    </div>
+                    <div class="logs-options">
+                        <label class="autoscroll-toggle">
+                            <input type="checkbox" id="autoscroll-toggle" checked>
+                            <span>Auto-scroll</span>
+                        </label>
+                        <button id="clear-logs-search" style="display: none;">Clear Search</button>
+                    </div>
+                </div>
+                
+                <div class="logs-container">
+                    <div class="logs-output" id="logs-output"></div>
+                </div>
             </div>
 
             <!-- Console Page -->

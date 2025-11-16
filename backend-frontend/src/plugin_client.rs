@@ -267,4 +267,9 @@ impl PluginClient {
     pub async fn delete_recipe(&self, id: &str) -> Result<Value, Box<dyn Error>> {
         self.delete(&format!("/recipe?id={}", id)).await
     }
+
+    // Logs method
+    pub async fn get_logs(&self) -> Result<Value, Box<dyn Error>> {
+        self.get("/logs").await
+    }
 }

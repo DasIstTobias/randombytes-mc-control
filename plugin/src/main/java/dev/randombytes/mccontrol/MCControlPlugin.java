@@ -20,15 +20,18 @@ public class MCControlPlugin extends JavaPlugin {
     private MetricsCollector metricsCollector;
     private PlayerDataManager playerDataManager;
     private CustomRecipeManager customRecipeManager;
+    private LogManager logManager;
     
     private String apiKey;
     private int port;
     private KeyPair keyPair;
+    private long startTime; // Track server start time
     
     @Override
     public void onEnable() {
         instance = this;
         gson = new GsonBuilder().setPrettyPrinting().create();
+        startTime = System.currentTimeMillis(); // Record start time
         
         // Create plugin directory if it doesn't exist
         if (!getDataFolder().exists()) {
@@ -48,6 +51,7 @@ public class MCControlPlugin extends JavaPlugin {
         metricsCollector = new MetricsCollector(this);
         playerDataManager = new PlayerDataManager(this);
         customRecipeManager = new CustomRecipeManager(this);
+        logManager = new LogManager(this);
         
         // Attach console log handler to capture server logs
         attachConsoleLogHandler();
@@ -174,6 +178,14 @@ public class MCControlPlugin extends JavaPlugin {
         return customRecipeManager;
     }
     
+    public LogManager getLogManager() {
+        return logManager;
+    }
+    
+    public long getUptime() {
+        return System.currentTimeMillis() - startTime;
+    }
+    
     private void attachConsoleLogHandler() {
         // Attach a custom handler to the root logger to capture all console output
         java.util.logging.Logger rootLogger = java.util.logging.Logger.getLogger("");
@@ -192,6 +204,11 @@ public class MCControlPlugin extends JavaPlugin {
                         timestamp, threadName, level, message);
                     
                     playerDataManager.addConsoleLog(formattedLog);
+                    
+                    // Also add to combined logs
+                    if (logManager != null) {
+                        logManager.addLog("CONSOLE: " + formattedLog);
+                    }
                 }
             }
             

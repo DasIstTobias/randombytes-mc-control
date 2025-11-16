@@ -200,6 +200,24 @@ function formatUUID(uuid) {
     return `${uuid.slice(0, 8)}-${uuid.slice(8, 12)}-${uuid.slice(12, 16)}-${uuid.slice(16, 20)}-${uuid.slice(20)}`;
 }
 
+// Format uptime in human-readable format
+function formatUptime(uptimeMs) {
+    const seconds = Math.floor(uptimeMs / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) {
+        return `${days}d ${hours % 24}h`;
+    } else if (hours > 0) {
+        return `${hours}h ${minutes % 60}m`;
+    } else if (minutes > 0) {
+        return `${minutes}m ${seconds % 60}s`;
+    } else {
+        return `${seconds}s`;
+    }
+}
+
 // Navigation
 document.querySelectorAll('.nav-link').forEach(link => {
     link.addEventListener('click', (e) => {
@@ -273,6 +291,11 @@ async function loadPage(page) {
                 break;
             case 'custom-recipes':
                 await loadCustomRecipes();
+                break;
+            case 'logs':
+                await loadLogs();
+                // Auto-refresh every 2 seconds
+                pageRefreshInterval = setInterval(loadLogs, 2000);
                 break;
         }
     } catch (error) {
@@ -362,6 +385,13 @@ async function updateStatus() {
             document.getElementById('current-tps').textContent = (latest.tps || 0).toFixed(1);
             document.getElementById('current-memory').textContent = (latest.memory || 0).toFixed(1) + '%';
             document.getElementById('current-cpu').textContent = (latest.cpu || 0).toFixed(1) + '%';
+            
+            // Update server uptime
+            if (serverData && serverData.uptime) {
+                document.getElementById('server-uptime').textContent = formatUptime(serverData.uptime);
+            } else {
+                document.getElementById('server-uptime').textContent = '-';
+            }
             
             // Update max players from server info
             if (serverData && serverData.maxPlayers) {
@@ -627,6 +657,7 @@ function renderPlayers(players) {
                 <td>${playTime}</td>
                 <td>
                     <button onclick="showPlayerInventory('${player.uuid}', '${escapeHtml(player.name)}')">Inventory</button>
+                    ${player.online ? `<button class="warning" onclick="kickPlayer('${player.uuid}', '${escapeHtml(player.name)}')">Kick</button>` : ''}
                     <button class="danger" onclick="toggleBan('${player.uuid}', ${player.banned})">${player.banned ? 'Unban' : 'Ban'}</button>
                     <button onclick="toggleOp('${player.uuid}', ${player.op || false})">${player.op ? 'DeOP' : 'OP'}</button>
                 </td>
@@ -720,6 +751,20 @@ async function toggleOp(uuid, isOp) {
     } catch (error) {
         console.error('Error toggling OP:', error);
         await customAlert('Failed to ' + (isOp ? 'de-op' : 'op') + ' player');
+    }
+}
+
+async function kickPlayer(uuid, name) {
+    const confirmed = await customConfirm(`Are you sure you want to kick ${name} from the server?`);
+    if (!confirmed) return;
+    
+    try {
+        await API.post(`/player/${uuid}/action`, { action: 'kick' });
+        await customAlert(`${name} has been kicked from the server`);
+        await loadPlayers();
+    } catch (error) {
+        console.error('Error kicking player:', error);
+        await customAlert('Failed to kick player: ' + error.message);
     }
 }
 
@@ -1610,6 +1655,122 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
+// Logs Page
+let allLogs = []; // Store all logs
+let currentLogSearch = ''; // Store current search term
+let autoScroll = true; // Auto-scroll state
+
+async function loadLogs() {
+    try {
+        const data = await API.get('/logs');
+        allLogs = data.logs || [];
+        
+        // Apply current search filter when refreshing
+        if (currentLogSearch) {
+            const filtered = allLogs.filter(log => 
+                log.toLowerCase().includes(currentLogSearch)
+            );
+            renderLogs(filtered);
+        } else {
+            renderLogs(allLogs);
+        }
+    } catch (error) {
+        console.error('Error loading logs:', error);
+        // Show empty state if API not available yet
+        renderLogs([]);
+    }
+}
+
+function renderLogs(logs) {
+    const outputDiv = document.getElementById('logs-output');
+    const wasAtBottom = isScrolledToBottom(outputDiv.parentElement);
+    
+    outputDiv.innerHTML = '';
+    
+    if (logs && logs.length > 0) {
+        logs.forEach(log => {
+            const lineDiv = document.createElement('div');
+            lineDiv.className = 'log-line';
+            
+            // Highlight search matches
+            if (currentLogSearch && log.toLowerCase().includes(currentLogSearch)) {
+                lineDiv.classList.add('highlight');
+            }
+            
+            lineDiv.textContent = log;
+            outputDiv.appendChild(lineDiv);
+        });
+    } else {
+        outputDiv.innerHTML = '<div class="log-line">No logs available</div>';
+    }
+    
+    // Auto-scroll to bottom if enabled and was at bottom
+    if (autoScroll && wasAtBottom) {
+        scrollToBottom(outputDiv.parentElement);
+    }
+}
+
+function isScrolledToBottom(element) {
+    if (!element) return true;
+    return element.scrollHeight - element.scrollTop - element.clientHeight < 50;
+}
+
+function scrollToBottom(element) {
+    if (element) {
+        element.scrollTop = element.scrollHeight;
+    }
+}
+
+// Logs search functionality
+document.addEventListener('DOMContentLoaded', () => {
+    const searchInput = document.getElementById('logs-search');
+    const clearSearchBtn = document.getElementById('clear-logs-search');
+    const autoScrollToggle = document.getElementById('autoscroll-toggle');
+    
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase().trim();
+            currentLogSearch = searchTerm;
+            
+            if (clearSearchBtn) {
+                clearSearchBtn.style.display = searchTerm ? 'inline-block' : 'none';
+            }
+            
+            if (!searchTerm) {
+                renderLogs(allLogs);
+                return;
+            }
+            
+            const filtered = allLogs.filter(log => 
+                log.toLowerCase().includes(searchTerm)
+            );
+            
+            renderLogs(filtered);
+        });
+    }
+    
+    if (clearSearchBtn) {
+        clearSearchBtn.addEventListener('click', () => {
+            if (searchInput) {
+                searchInput.value = '';
+                currentLogSearch = '';
+                clearSearchBtn.style.display = 'none';
+                renderLogs(allLogs);
+            }
+        });
+    }
+    
+    if (autoScrollToggle) {
+        autoScrollToggle.addEventListener('change', (e) => {
+            autoScroll = e.target.checked;
+            if (autoScroll) {
+                const logsContainer = document.querySelector('.logs-container');
+                scrollToBottom(logsContainer);
+            }
+        });
+    }
+});
 
 // Initialize
 loadPage('status');

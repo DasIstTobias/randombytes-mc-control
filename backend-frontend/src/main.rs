@@ -105,6 +105,8 @@ async fn main() {
         .route("/api/recipe/:id", get(get_recipe))
         .route("/api/recipe/:id", post(update_recipe))
         .route("/api/recipe/:id", axum::routing::delete(delete_recipe))
+        // Logs endpoint
+        .route("/api/logs", get(get_logs))
         // Serve frontend
         .nest_service("/", ServeDir::new("frontend"))
         .with_state(state.clone());
@@ -670,6 +672,17 @@ async fn delete_recipe(
         Ok(result) => Ok(Json(result)),
         Err(e) => {
             error!("Failed to delete recipe: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn get_logs(State(state): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.get_logs().await {
+        Ok(logs) => Ok(Json(logs)),
+        Err(e) => {
+            error!("Failed to get logs: {}", e);
             Err(ApiError::PluginError(e.to_string()))
         }
     }

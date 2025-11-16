@@ -57,6 +57,7 @@ public class APIServer {
             server.createContext("/api/restart", new RestartHandler());
             server.createContext("/api/recipes", new RecipesHandler());
             server.createContext("/api/recipe", new RecipeHandler());
+            server.createContext("/api/logs", new LogsHandler());
             
             server.setExecutor(null);
             server.start();
@@ -442,6 +443,8 @@ public class APIServer {
             
             try {
                 JsonObject serverInfo = plugin.getPlayerDataManager().getServerInfo();
+                // Add uptime
+                serverInfo.addProperty("uptime", plugin.getUptime());
                 sendResponse(exchange, 200, plugin.getGson().toJson(serverInfo));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error getting server info", e);
@@ -848,6 +851,30 @@ public class APIServer {
                 }
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error handling recipe request", e);
+                sendError(exchange, 500, "Internal server error");
+            }
+        }
+    }
+    
+    // Logs handler
+    private class LogsHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!validateAuth(exchange)) {
+                sendError(exchange, 401, "Unauthorized");
+                return;
+            }
+            
+            if (!"GET".equals(exchange.getRequestMethod())) {
+                sendError(exchange, 405, "Method not allowed");
+                return;
+            }
+            
+            try {
+                JsonObject logs = plugin.getLogManager().getAllLogs();
+                sendResponse(exchange, 200, plugin.getGson().toJson(logs));
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.SEVERE, "Error getting logs", e);
                 sendError(exchange, 500, "Internal server error");
             }
         }
