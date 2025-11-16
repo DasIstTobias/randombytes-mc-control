@@ -91,6 +91,7 @@ async fn main() {
         .route("/api/settings/properties", post(update_properties))
         .route("/api/settings/gamerules", post(update_gamerules))
         .route("/api/restart", post(restart_server))
+        .route("/api/uuid-lookup", get(uuid_lookup))
         // Serve frontend
         .nest_service("/", ServeDir::new("frontend"))
         .with_state(state);
@@ -436,6 +437,56 @@ async fn restart_server(
         Err(e) => {
             error!("Failed to restart server: {}", e);
             Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct UuidLookupQuery {
+    username: String,
+}
+
+async fn uuid_lookup(
+    axum::extract::Query(query): axum::extract::Query<UuidLookupQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    // Fetch UUID from Mojang API
+    let url = format!("https://api.mojang.com/users/profiles/minecraft/{}", query.username);
+    
+    match reqwest::get(&url).await {
+        Ok(response) => {
+            if response.status().is_success() {
+                match response.json::<serde_json::Value>().await {
+                    Ok(data) => {
+                        if let Some(id) = data.get("id").and_then(|v| v.as_str()) {
+                            // Format UUID with dashes
+                            let formatted_uuid = format!(
+                                "{}-{}-{}-{}-{}",
+                                &id[0..8],
+                                &id[8..12],
+                                &id[12..16],
+                                &id[16..20],
+                                &id[20..32]
+                            );
+                            Ok(Json(serde_json::json!({
+                                "uuid": formatted_uuid,
+                                "name": data.get("name")
+                            })))
+                        } else {
+                            Err(ApiError::PluginError("Player not found".to_string()))
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to parse Mojang API response: {}", e);
+                        Err(ApiError::PluginError("Failed to parse response".to_string()))
+                    }
+                }
+            } else {
+                Err(ApiError::PluginError("Player not found".to_string()))
+            }
+        }
+        Err(e) => {
+            error!("Failed to fetch UUID from Mojang API: {}", e);
+            Err(ApiError::PluginError("Failed to fetch UUID".to_string()))
         }
     }
 }

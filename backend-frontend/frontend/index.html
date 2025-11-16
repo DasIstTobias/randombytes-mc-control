@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RandomBytes MC Control</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -57,7 +58,7 @@
                 </div>
                 <div class="form-section" style="margin-top: 2rem;">
                     <h3>Server Actions</h3>
-                    <button id="restart-server-btn" class="danger" style="width: auto;">Restart Server</button>
+                    <button id="shutdown-server-btn" class="danger" style="width: auto;">Shutdown Server</button>
                 </div>
             </div>
 
@@ -238,6 +239,14 @@
                 <h3>Inventory</h3>
                 <div id="player-inventory" class="inventory-grid"></div>
             </div>
+        </div>
+    </div>
+
+    <!-- Offline Overlay (hidden by default, shown when server is unreachable) -->
+    <div id="offline-overlay" class="offline-overlay" style="display: none;">
+        <div class="offline-message">
+            <h1>SERVER OFFLINE</h1>
+            <p>The backend server is unreachable. Waiting for connection...</p>
         </div>
     </div>
 

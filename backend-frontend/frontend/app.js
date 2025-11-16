@@ -1,38 +1,90 @@
+// Offline detection
+let isOffline = false;
+let offlineCheckInterval = null;
+
+function showOfflineOverlay() {
+    if (!isOffline) {
+        isOffline = true;
+        document.getElementById('offline-overlay').style.display = 'flex';
+    }
+}
+
+function hideOfflineOverlay() {
+    if (isOffline) {
+        isOffline = false;
+        document.getElementById('offline-overlay').style.display = 'none';
+    }
+}
+
+function startOfflineCheck() {
+    // Check connection every 5 seconds
+    offlineCheckInterval = setInterval(async () => {
+        try {
+            const response = await fetch('/api/server', { method: 'HEAD' });
+            if (response.ok) {
+                hideOfflineOverlay();
+            } else {
+                showOfflineOverlay();
+            }
+        } catch (error) {
+            showOfflineOverlay();
+        }
+    }, 5000);
+}
+
 // API Client
 const API = {
     async get(endpoint) {
-        const response = await fetch(`/api${endpoint}`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        return response.json();
+        try {
+            const response = await fetch(`/api${endpoint}`);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            hideOfflineOverlay();
+            return response.json();
+        } catch (error) {
+            showOfflineOverlay();
+            throw error;
+        }
     },
 
     async post(endpoint, data) {
-        const response = await fetch(`/api${endpoint}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        return response.json();
+        try {
+            const response = await fetch(`/api${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            hideOfflineOverlay();
+            return response.json();
+        } catch (error) {
+            showOfflineOverlay();
+            throw error;
+        }
     },
 
     async delete(endpoint) {
-        const response = await fetch(`/api${endpoint}`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        return response.json();
+        try {
+            const response = await fetch(`/api${endpoint}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            hideOfflineOverlay();
+            return response.json();
+        } catch (error) {
+            showOfflineOverlay();
+            throw error;
+        }
     }
 };
 
-// Mojang API for UUID lookup
+// UUID lookup via backend (to avoid CORS issues)
 async function fetchUUID(username) {
     try {
-        const response = await fetch(`https://api.mojang.com/users/profiles/minecraft/${username}`);
+        const response = await fetch(`/api/uuid-lookup?username=${encodeURIComponent(username)}`);
         if (!response.ok) return null;
         const data = await response.json();
-        return data.id;
+        return data.uuid; // Already formatted with dashes
     } catch (error) {
         console.error('Failed to fetch UUID:', error);
         return null;
@@ -204,18 +256,18 @@ function updateMetricsChart(metrics) {
     ctx.fillText('Memory %', padding + 60, 20);
 }
 
-// Restart Server
-document.getElementById('restart-server-btn').addEventListener('click', async () => {
-    if (!confirm('Are you sure you want to restart the server? All players will be disconnected.')) {
+// Shutdown Server
+document.getElementById('shutdown-server-btn').addEventListener('click', async () => {
+    if (!confirm('Are you sure you want to shutdown the server? All players will be disconnected and the server will stop.')) {
         return;
     }
     
     try {
         await API.post('/restart', {});
-        alert('Server restart initiated. The server will be back online in a few moments.');
+        alert('Server shutdown initiated.');
     } catch (error) {
-        console.error('Error restarting server:', error);
-        alert('Failed to restart server: ' + error.message);
+        console.error('Error shutting down server:', error);
+        alert('Failed to shutdown server: ' + error.message);
     }
 });
 
@@ -351,13 +403,12 @@ document.getElementById('whitelist-form').addEventListener('submit', async (e) =
     let uuid = document.getElementById('whitelist-uuid').value.trim();
     
     if (!uuid) {
-        // Fetch UUID from Mojang API
-        const fetchedUUID = await fetchUUID(name);
-        if (!fetchedUUID) {
+        // Fetch UUID from backend (already formatted)
+        uuid = await fetchUUID(name);
+        if (!uuid) {
             alert('Could not find UUID for player: ' + name);
             return;
         }
-        uuid = formatUUID(fetchedUUID);
     }
     
     try {
@@ -426,13 +477,12 @@ document.getElementById('blacklist-form').addEventListener('submit', async (e) =
     let uuid = document.getElementById('blacklist-uuid').value.trim();
     
     if (!uuid) {
-        // Fetch UUID from Mojang API
-        const fetchedUUID = await fetchUUID(name);
-        if (!fetchedUUID) {
+        // Fetch UUID from backend (already formatted)
+        uuid = await fetchUUID(name);
+        if (!uuid) {
             alert('Could not find UUID for player: ' + name);
             return;
         }
-        uuid = formatUUID(fetchedUUID);
     }
     
     try {
@@ -501,13 +551,12 @@ document.getElementById('ops-form').addEventListener('submit', async (e) => {
     let uuid = document.getElementById('ops-uuid').value.trim();
     
     if (!uuid) {
-        // Fetch UUID from Mojang API
-        const fetchedUUID = await fetchUUID(name);
-        if (!fetchedUUID) {
+        // Fetch UUID from backend (already formatted)
+        uuid = await fetchUUID(name);
+        if (!uuid) {
             alert('Could not find UUID for player: ' + name);
             return;
         }
-        uuid = formatUUID(fetchedUUID);
     }
     
     try {
@@ -877,3 +926,4 @@ function escapeHtml(text) {
 
 // Initialize
 loadPage('status');
+startOfflineCheck();

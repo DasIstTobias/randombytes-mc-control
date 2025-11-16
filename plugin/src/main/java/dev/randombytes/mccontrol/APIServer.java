@@ -678,10 +678,10 @@ public class APIServer {
                 
                 // Schedule server restart
                 Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "restart");
+                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "stop");
                 }, 20L); // 1 second delay
             } catch (Exception e) {
-                plugin.getLogger().log(Level.SEVERE, "Error restarting server", e);
+                plugin.getLogger().log(Level.SEVERE, "Error shutting down server", e);
                 sendError(exchange, 500, "Internal server error");
             }
         }

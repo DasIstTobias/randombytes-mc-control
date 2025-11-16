@@ -424,9 +424,14 @@ public class PlayerDataManager {
         // Get game rules from the main world
         World mainWorld = Bukkit.getWorlds().get(0);
         for (GameRule<?> rule : GameRule.values()) {
-            Object value = mainWorld.getGameRuleValue(rule);
-            if (value != null) {
-                gamerules.addProperty(rule.getName(), value.toString());
+            try {
+                Object value = mainWorld.getGameRuleValue(rule);
+                if (value != null) {
+                    gamerules.addProperty(rule.getName(), value.toString());
+                }
+            } catch (IllegalArgumentException e) {
+                // Skip gamerules that are not available in this server version
+                plugin.getLogger().fine("GameRule '" + rule.getName() + "' is not available, skipping");
             }
         }
         
