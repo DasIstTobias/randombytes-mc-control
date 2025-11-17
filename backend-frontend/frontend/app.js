@@ -98,6 +98,146 @@ async function customPrompt(message, placeholder = '') {
     return await showCustomModal('Input Required', message, 'prompt', placeholder);
 }
 
+// WebSocket Connection Manager
+let ws = null;
+let wsReconnectTimer = null;
+let wsReconnectAttempts = 0;
+const WS_MAX_RECONNECT_ATTEMPTS = 10;
+const WS_RECONNECT_DELAY = 3000;
+
+// Store latest data from WebSocket
+const wsDataCache = {
+    metrics: null,
+    players: null,
+    server_info: null,
+    plugins: null,
+    console: null,
+    chat: null,
+    logs: null,
+    whitelist: null,
+    blacklist: null,
+    ops: null
+};
+
+// Callbacks for when data is received
+const wsDataCallbacks = {
+    metrics: [],
+    players: [],
+    server_info: [],
+    plugins: [],
+    console: [],
+    chat: [],
+    logs: [],
+    whitelist: [],
+    blacklist: [],
+    ops: []
+};
+
+function connectWebSocket() {
+    // Don't reconnect if we're already connected or trying to connect
+    if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+        return;
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+    console.log('Connecting to WebSocket:', wsUrl);
+
+    try {
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log('WebSocket connected');
+            wsReconnectAttempts = 0;
+            hideOfflineOverlay();
+
+            // Clear any pending reconnect timer
+            if (wsReconnectTimer) {
+                clearTimeout(wsReconnectTimer);
+                wsReconnectTimer = null;
+            }
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const message = JSON.parse(event.data);
+                handleWebSocketMessage(message);
+            } catch (error) {
+                console.error('Error parsing WebSocket message:', error);
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+
+        ws.onclose = () => {
+            console.log('WebSocket disconnected');
+            ws = null;
+            showOfflineOverlay();
+
+            // Attempt to reconnect with exponential backoff
+            if (wsReconnectAttempts < WS_MAX_RECONNECT_ATTEMPTS) {
+                wsReconnectAttempts++;
+                const delay = WS_RECONNECT_DELAY * Math.min(wsReconnectAttempts, 5);
+                console.log(`Reconnecting in ${delay}ms (attempt ${wsReconnectAttempts})`);
+
+                wsReconnectTimer = setTimeout(() => {
+                    connectWebSocket();
+                }, delay);
+            } else {
+                console.error('Max reconnection attempts reached');
+            }
+        };
+    } catch (error) {
+        console.error('Error creating WebSocket:', error);
+        showOfflineOverlay();
+    }
+}
+
+function handleWebSocketMessage(message) {
+    const { type, data } = message;
+
+    // Store in cache
+    if (wsDataCache.hasOwnProperty(type)) {
+        wsDataCache[type] = data;
+    }
+
+    // Call registered callbacks
+    if (wsDataCallbacks[type]) {
+        wsDataCallbacks[type].forEach(callback => {
+            try {
+                callback(data);
+            } catch (error) {
+                console.error(`Error in WebSocket callback for ${type}:`, error);
+            }
+        });
+    }
+}
+
+// Register a callback for a specific data type
+function onWebSocketData(type, callback) {
+    if (wsDataCallbacks[type]) {
+        wsDataCallbacks[type].push(callback);
+    }
+}
+
+// Remove a callback
+function offWebSocketData(type, callback) {
+    if (wsDataCallbacks[type]) {
+        const index = wsDataCallbacks[type].indexOf(callback);
+        if (index > -1) {
+            wsDataCallbacks[type].splice(index, 1);
+        }
+    }
+}
+
+// Get cached data
+function getWebSocketData(type) {
+    return wsDataCache[type];
+}
+
 // Offline detection
 let isOffline = false;
 let offlineCheckInterval = null;
@@ -304,17 +444,89 @@ async function loadPage(page) {
 }
 
 // Status (formerly Metrics)
-let statusInterval;
+let statusMetricsCallback = null;
+let statusPlayersCallback = null;
+let statusServerCallback = null;
 
 async function loadStatus() {
-    // Clear existing interval
-    if (statusInterval) clearInterval(statusInterval);
+    // Clear any existing callbacks
+    if (statusMetricsCallback) {
+        offWebSocketData('metrics', statusMetricsCallback);
+        statusMetricsCallback = null;
+    }
+    if (statusPlayersCallback) {
+        offWebSocketData('players', statusPlayersCallback);
+        statusPlayersCallback = null;
+    }
+    if (statusServerCallback) {
+        offWebSocketData('server_info', statusServerCallback);
+        statusServerCallback = null;
+    }
     
-    // Load initial data
-    await updateStatus();
+    // Register WebSocket callbacks
+    statusMetricsCallback = (data) => {
+        updateStatusMetrics(data);
+    };
+    statusPlayersCallback = (data) => {
+        updateStatusPlayers(data);
+    };
+    statusServerCallback = (data) => {
+        updateStatusServer(data);
+    };
     
-    // Update every 2 seconds
-    statusInterval = setInterval(updateStatus, 2000);
+    onWebSocketData('metrics', statusMetricsCallback);
+    onWebSocketData('players', statusPlayersCallback);
+    onWebSocketData('server_info', statusServerCallback);
+    
+    // Load initial data from cache or API
+    const cachedMetrics = getWebSocketData('metrics');
+    const cachedPlayers = getWebSocketData('players');
+    const cachedServer = getWebSocketData('server_info');
+    
+    if (cachedMetrics) updateStatusMetrics(cachedMetrics);
+    if (cachedPlayers) updateStatusPlayers(cachedPlayers);
+    if (cachedServer) updateStatusServer(cachedServer);
+}
+
+function updateStatusMetrics(metricsData) {
+    if (metricsData.metrics && metricsData.metrics.length > 0) {
+        const latest = metricsData.metrics[metricsData.metrics.length - 1];
+        
+        document.getElementById('current-tps').textContent = (latest.tps || 0).toFixed(1);
+        document.getElementById('current-memory').textContent = (latest.memory || 0).toFixed(1) + '%';
+        document.getElementById('current-cpu').textContent = (latest.cpu || 0).toFixed(1) + '%';
+        
+        // Update chart
+        updateMetricsChart(metricsData.metrics, maxPlayers);
+    }
+}
+
+function updateStatusPlayers(playersData) {
+    if (playersData && playersData.players) {
+        const onlineCount = playersData.players.filter(p => p.online).length;
+        document.getElementById('current-players').textContent = onlineCount;
+    }
+}
+
+function updateStatusServer(serverData) {
+    if (serverData) {
+        // Update server uptime
+        if (serverData.uptime) {
+            document.getElementById('server-uptime').textContent = formatUptime(serverData.uptime);
+        } else {
+            document.getElementById('server-uptime').textContent = '-';
+        }
+        
+        // Update max players
+        if (serverData.maxPlayers) {
+            maxPlayers = serverData.maxPlayers;
+        }
+        
+        // Update server identity header if not yet displayed
+        if (serverIdentityData) {
+            updateServerIdentityHeader(serverData);
+        }
+    }
 }
 
 let maxPlayers = 20; // Default value, will be updated from server info
@@ -364,52 +576,6 @@ async function loadSidebarServerInfo() {
     }
 }
 
-async function updateStatus() {
-    try {
-        const [metricsData, serverData, playersData] = await Promise.all([
-            API.get('/metrics'),
-            API.get('/server'),
-            API.get('/players')
-        ]);
-        
-        if (metricsData.metrics && metricsData.metrics.length > 0) {
-            const latest = metricsData.metrics[metricsData.metrics.length - 1];
-            
-            // Use actual count of online players from players API for accuracy
-            let onlineCount = 0;
-            if (playersData && playersData.players) {
-                onlineCount = playersData.players.filter(p => p.online).length;
-            }
-            
-            document.getElementById('current-players').textContent = onlineCount;
-            document.getElementById('current-tps').textContent = (latest.tps || 0).toFixed(1);
-            document.getElementById('current-memory').textContent = (latest.memory || 0).toFixed(1) + '%';
-            document.getElementById('current-cpu').textContent = (latest.cpu || 0).toFixed(1) + '%';
-            
-            // Update server uptime
-            if (serverData && serverData.uptime) {
-                document.getElementById('server-uptime').textContent = formatUptime(serverData.uptime);
-            } else {
-                document.getElementById('server-uptime').textContent = '-';
-            }
-            
-            // Update max players from server info
-            if (serverData && serverData.maxPlayers) {
-                maxPlayers = serverData.maxPlayers;
-            }
-            
-            // Update server identity header if not yet displayed
-            if (serverData && serverIdentityData) {
-                updateServerIdentityHeader(serverData);
-            }
-            
-            // Update chart - use metrics data for historical display
-            updateMetricsChart(metricsData.metrics, maxPlayers);
-        }
-    } catch (error) {
-        console.error('Error updating status:', error);
-    }
-}
 
 function updateServerIdentityHeader(serverData) {
     const identityDiv = document.getElementById('server-identity');
@@ -611,13 +777,20 @@ document.getElementById('shutdown-server-btn').addEventListener('click', async (
 // Players
 let allPlayers = []; // Store all players for search filtering
 let currentPlayerSearch = ''; // Store current search term
+let playersCallback = null;
 
 async function loadPlayers() {
-    try {
-        const data = await API.get('/players');
+    // Clear any existing callback
+    if (playersCallback) {
+        offWebSocketData('players', playersCallback);
+        playersCallback = null;
+    }
+    
+    // Register WebSocket callback
+    playersCallback = (data) => {
         allPlayers = data.players || [];
         
-        // Apply current search filter when refreshing
+        // Apply current search filter
         if (currentPlayerSearch) {
             const filtered = allPlayers.filter(player => 
                 player.name.toLowerCase().includes(currentPlayerSearch) || 
@@ -627,8 +800,14 @@ async function loadPlayers() {
         } else {
             renderPlayers(allPlayers);
         }
-    } catch (error) {
-        console.error('Error loading players:', error);
+    };
+    
+    onWebSocketData('players', playersCallback);
+    
+    // Load initial data from cache
+    const cachedPlayers = getWebSocketData('players');
+    if (cachedPlayers) {
+        playersCallback(cachedPlayers);
     }
 }
 
@@ -1773,5 +1952,5 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Initialize
+connectWebSocket();
 loadPage('status');
-startOfflineCheck();
