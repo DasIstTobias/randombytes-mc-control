@@ -379,15 +379,8 @@ document.querySelectorAll('.nav-link').forEach(link => {
 
 // Page loaders
 let currentPage = 'status';
-let pageRefreshInterval = null;
 
 async function loadPage(page) {
-    // Clear any existing refresh interval
-    if (pageRefreshInterval) {
-        clearInterval(pageRefreshInterval);
-        pageRefreshInterval = null;
-    }
-    
     currentPage = page;
     
     try {
@@ -398,8 +391,6 @@ async function loadPage(page) {
                 break;
             case 'players':
                 await loadPlayers();
-                // Auto-refresh every second
-                pageRefreshInterval = setInterval(loadPlayers, 1000);
                 break;
             case 'whitelist':
                 await loadWhitelist();
@@ -412,13 +403,9 @@ async function loadPage(page) {
                 break;
             case 'plugins':
                 await loadPlugins();
-                // Auto-refresh every second
-                pageRefreshInterval = setInterval(loadPlugins, 1000);
                 break;
             case 'server':
                 await loadServerInfo();
-                // Auto-refresh every second
-                pageRefreshInterval = setInterval(loadServerInfo, 1000);
                 break;
             case 'console':
                 await loadConsole();
@@ -434,8 +421,6 @@ async function loadPage(page) {
                 break;
             case 'logs':
                 await loadLogs();
-                // Auto-refresh every 2 seconds
-                pageRefreshInterval = setInterval(loadLogs, 2000);
                 break;
         }
     } catch (error) {
@@ -948,21 +933,17 @@ async function kickPlayer(uuid, name) {
 }
 
 // Whitelist
-let whitelistInterval;
+let whitelistCallback = null;
 
 async function loadWhitelist() {
-    // Clear existing interval
-    if (whitelistInterval) clearInterval(whitelistInterval);
+    // Clear any existing callback
+    if (whitelistCallback) {
+        offWebSocketData('whitelist', whitelistCallback);
+        whitelistCallback = null;
+    }
     
-    await updateWhitelist();
-    
-    // Auto-refresh every 5 seconds
-    whitelistInterval = setInterval(updateWhitelist, 5000);
-}
-
-async function updateWhitelist() {
-    try {
-        const data = await API.get('/whitelist');
+    // Register WebSocket callback
+    whitelistCallback = (data) => {
         const tbody = document.getElementById('whitelist-list');
         tbody.innerHTML = '';
         
@@ -980,8 +961,14 @@ async function updateWhitelist() {
         } else {
             tbody.innerHTML = '<tr><td colspan="3">Whitelist is empty</td></tr>';
         }
-    } catch (error) {
-        console.error('Error loading whitelist:', error);
+    };
+    
+    onWebSocketData('whitelist', whitelistCallback);
+    
+    // Load initial data from cache
+    const cachedWhitelist = getWebSocketData('whitelist');
+    if (cachedWhitelist) {
+        whitelistCallback(cachedWhitelist);
     }
 }
 
@@ -1003,7 +990,6 @@ document.getElementById('whitelist-form').addEventListener('submit', async (e) =
     try {
         await API.post('/whitelist/add', { name, uuid });
         document.getElementById('whitelist-form').reset();
-        await updateWhitelist();
     } catch (error) {
         console.error('Error adding to whitelist:', error);
         await customAlert('Failed to add player to whitelist');
@@ -1016,7 +1002,6 @@ async function removeFromWhitelist(uuid, name) {
     
     try {
         await API.delete(`/whitelist/remove?uuid=${uuid}`);
-        await updateWhitelist();
     } catch (error) {
         console.error('Error removing from whitelist:', error);
         await customAlert('Failed to remove player from whitelist');
@@ -1024,21 +1009,17 @@ async function removeFromWhitelist(uuid, name) {
 }
 
 // Blacklist
-let blacklistInterval;
+let blacklistCallback = null;
 
 async function loadBlacklist() {
-    // Clear existing interval
-    if (blacklistInterval) clearInterval(blacklistInterval);
+    // Clear any existing callback
+    if (blacklistCallback) {
+        offWebSocketData('blacklist', blacklistCallback);
+        blacklistCallback = null;
+    }
     
-    await updateBlacklist();
-    
-    // Auto-refresh every 5 seconds
-    blacklistInterval = setInterval(updateBlacklist, 5000);
-}
-
-async function updateBlacklist() {
-    try {
-        const data = await API.get('/blacklist');
+    // Register WebSocket callback
+    blacklistCallback = (data) => {
         const tbody = document.getElementById('blacklist-list');
         tbody.innerHTML = '';
         
@@ -1056,8 +1037,14 @@ async function updateBlacklist() {
         } else {
             tbody.innerHTML = '<tr><td colspan="3">Blacklist is empty</td></tr>';
         }
-    } catch (error) {
-        console.error('Error loading blacklist:', error);
+    };
+    
+    onWebSocketData('blacklist', blacklistCallback);
+    
+    // Load initial data from cache
+    const cachedBlacklist = getWebSocketData('blacklist');
+    if (cachedBlacklist) {
+        blacklistCallback(cachedBlacklist);
     }
 }
 
@@ -1079,7 +1066,6 @@ document.getElementById('blacklist-form').addEventListener('submit', async (e) =
     try {
         await API.post('/blacklist/add', { name, uuid });
         document.getElementById('blacklist-form').reset();
-        await updateBlacklist();
     } catch (error) {
         console.error('Error adding to blacklist:', error);
         await customAlert('Failed to add player to blacklist');
@@ -1092,7 +1078,6 @@ async function removeFromBlacklist(uuid, name) {
     
     try {
         await API.delete(`/blacklist/remove?uuid=${uuid}`);
-        await updateBlacklist();
     } catch (error) {
         console.error('Error removing from blacklist:', error);
         await customAlert('Failed to remove player from blacklist');
@@ -1100,21 +1085,17 @@ async function removeFromBlacklist(uuid, name) {
 }
 
 // OPs
-let opsInterval;
+let opsCallback = null;
 
 async function loadOps() {
-    // Clear existing interval
-    if (opsInterval) clearInterval(opsInterval);
+    // Clear any existing callback
+    if (opsCallback) {
+        offWebSocketData('ops', opsCallback);
+        opsCallback = null;
+    }
     
-    await updateOps();
-    
-    // Auto-refresh every 5 seconds
-    opsInterval = setInterval(updateOps, 5000);
-}
-
-async function updateOps() {
-    try {
-        const data = await API.get('/ops');
+    // Register WebSocket callback
+    opsCallback = (data) => {
         const tbody = document.getElementById('ops-list');
         tbody.innerHTML = '';
         
@@ -1132,8 +1113,14 @@ async function updateOps() {
         } else {
             tbody.innerHTML = '<tr><td colspan="3">No operators</td></tr>';
         }
-    } catch (error) {
-        console.error('Error loading ops:', error);
+    };
+    
+    onWebSocketData('ops', opsCallback);
+    
+    // Load initial data from cache
+    const cachedOps = getWebSocketData('ops');
+    if (cachedOps) {
+        opsCallback(cachedOps);
     }
 }
 
@@ -1155,7 +1142,6 @@ document.getElementById('ops-form').addEventListener('submit', async (e) => {
     try {
         await API.post('/ops/add', { name, uuid });
         document.getElementById('ops-form').reset();
-        await updateOps();
     } catch (error) {
         console.error('Error adding operator:', error);
         await customAlert('Failed to add operator');
@@ -1168,7 +1154,6 @@ async function removeFromOps(uuid, name) {
     
     try {
         await API.delete(`/ops/remove?uuid=${uuid}`);
-        await updateOps();
     } catch (error) {
         console.error('Error removing operator:', error);
         await customAlert('Failed to remove operator');
@@ -1176,9 +1161,18 @@ async function removeFromOps(uuid, name) {
 }
 
 // Plugins
+// Plugins
+let pluginsCallback = null;
+
 async function loadPlugins() {
-    try {
-        const data = await API.get('/plugins');
+    // Clear any existing callback
+    if (pluginsCallback) {
+        offWebSocketData('plugins', pluginsCallback);
+        pluginsCallback = null;
+    }
+    
+    // Register WebSocket callback
+    pluginsCallback = (data) => {
         const tbody = document.getElementById('plugins-list');
         tbody.innerHTML = '';
         
@@ -1199,18 +1193,36 @@ async function loadPlugins() {
         } else {
             tbody.innerHTML = '<tr><td colspan="4">No plugins found</td></tr>';
         }
-    } catch (error) {
-        console.error('Error loading plugins:', error);
+    };
+    
+    onWebSocketData('plugins', pluginsCallback);
+    
+    // Load initial data from cache
+    const cachedPlugins = getWebSocketData('plugins');
+    if (cachedPlugins) {
+        pluginsCallback(cachedPlugins);
     }
 }
 
 // Server Info
+let serverInfoCallback = null;
+
 async function loadServerInfo() {
-    try {
-        const [data, geyserData] = await Promise.all([
-            API.get('/server'),
-            API.get('/geysermc')
-        ]);
+    // Clear any existing callback
+    if (serverInfoCallback) {
+        offWebSocketData('server_info', serverInfoCallback);
+        serverInfoCallback = null;
+    }
+    
+    // Register WebSocket callback for server info
+    serverInfoCallback = async (data) => {
+        // Fetch GeyserMC data separately (not in WebSocket yet)
+        let geyserData = { detected: false };
+        try {
+            geyserData = await API.get('/geysermc');
+        } catch (error) {
+            console.error('Error fetching GeyserMC info:', error);
+        }
         
         const infoContainer = document.getElementById('server-info');
         const worldsContainer = document.getElementById('server-worlds');
@@ -1275,8 +1287,14 @@ async function loadServerInfo() {
                 worldsContainer.appendChild(worldCard);
             });
         }
-    } catch (error) {
-        console.error('Error loading server info:', error);
+    };
+    
+    onWebSocketData('server_info', serverInfoCallback);
+    
+    // Load initial data from cache
+    const cachedServerInfo = getWebSocketData('server_info');
+    if (cachedServerInfo) {
+        serverInfoCallback(cachedServerInfo);
     }
 }
 
@@ -1294,22 +1312,17 @@ function createInfoCard(title, data) {
 }
 
 // Console
-let consoleInterval;
+let consoleCallback = null;
 
 async function loadConsole() {
-    // Clear existing interval
-    if (consoleInterval) clearInterval(consoleInterval);
+    // Clear any existing callback
+    if (consoleCallback) {
+        offWebSocketData('console', consoleCallback);
+        consoleCallback = null;
+    }
     
-    // Load initial logs
-    await updateConsole();
-    
-    // Update every 2 seconds
-    consoleInterval = setInterval(updateConsole, 2000);
-}
-
-async function updateConsole() {
-    try {
-        const data = await API.get('/console');
+    // Register WebSocket callback
+    consoleCallback = (data) => {
         const logDiv = document.getElementById('console-log');
         
         if (data.logs && data.logs.length > 0) {
@@ -1320,8 +1333,14 @@ async function updateConsole() {
             // Auto-scroll to bottom
             logDiv.scrollTop = logDiv.scrollHeight;
         }
-    } catch (error) {
-        console.error('Error loading console:', error);
+    };
+    
+    onWebSocketData('console', consoleCallback);
+    
+    // Load initial data from cache
+    const cachedConsole = getWebSocketData('console');
+    if (cachedConsole) {
+        consoleCallback(cachedConsole);
     }
 }
 
@@ -1336,9 +1355,6 @@ document.getElementById('console-form').addEventListener('submit', async (e) => 
     try {
         await API.post('/command', { command });
         input.value = '';
-        
-        // Wait a bit then refresh console
-        setTimeout(updateConsole, 500);
     } catch (error) {
         console.error('Error executing command:', error);
         await customAlert('Failed to execute command');
@@ -1346,22 +1362,17 @@ document.getElementById('console-form').addEventListener('submit', async (e) => 
 });
 
 // Chat Console
-let chatInterval;
+let chatCallback = null;
 
 async function loadChat() {
-    // Clear existing interval
-    if (chatInterval) clearInterval(chatInterval);
+    // Clear any existing callback
+    if (chatCallback) {
+        offWebSocketData('chat', chatCallback);
+        chatCallback = null;
+    }
     
-    // Load initial logs
-    await updateChat();
-    
-    // Update every 2 seconds
-    chatInterval = setInterval(updateChat, 2000);
-}
-
-async function updateChat() {
-    try {
-        const data = await API.get('/chat');
+    // Register WebSocket callback
+    chatCallback = (data) => {
         const logDiv = document.getElementById('chat-log');
         
         if (data.logs && data.logs.length > 0) {
@@ -1372,8 +1383,14 @@ async function updateChat() {
             // Auto-scroll to bottom
             logDiv.scrollTop = logDiv.scrollHeight;
         }
-    } catch (error) {
-        console.error('Error loading chat:', error);
+    };
+    
+    onWebSocketData('chat', chatCallback);
+    
+    // Load initial data from cache
+    const cachedChat = getWebSocketData('chat');
+    if (cachedChat) {
+        chatCallback(cachedChat);
     }
 }
 
@@ -1388,9 +1405,6 @@ document.getElementById('chat-form').addEventListener('submit', async (e) => {
     try {
         await API.post('/chat', { message });
         input.value = '';
-        
-        // Wait a bit then refresh chat
-        setTimeout(updateChat, 500);
     } catch (error) {
         console.error('Error sending chat message:', error);
         await customAlert('Failed to send message');
@@ -1839,13 +1853,20 @@ function escapeHtml(text) {
 let allLogs = []; // Store all logs
 let currentLogSearch = ''; // Store current search term
 let autoScroll = true; // Auto-scroll state
+let logsCallback = null;
 
 async function loadLogs() {
-    try {
-        const data = await API.get('/logs');
+    // Clear any existing callback
+    if (logsCallback) {
+        offWebSocketData('logs', logsCallback);
+        logsCallback = null;
+    }
+    
+    // Register WebSocket callback
+    logsCallback = (data) => {
         allLogs = data.logs || [];
         
-        // Apply current search filter when refreshing
+        // Apply current search filter
         if (currentLogSearch) {
             const filtered = allLogs.filter(log => 
                 log.toLowerCase().includes(currentLogSearch)
@@ -1854,10 +1875,14 @@ async function loadLogs() {
         } else {
             renderLogs(allLogs);
         }
-    } catch (error) {
-        console.error('Error loading logs:', error);
-        // Show empty state if API not available yet
-        renderLogs([]);
+    };
+    
+    onWebSocketData('logs', logsCallback);
+    
+    // Load initial data from cache
+    const cachedLogs = getWebSocketData('logs');
+    if (cachedLogs) {
+        logsCallback(cachedLogs);
     }
 }
 
