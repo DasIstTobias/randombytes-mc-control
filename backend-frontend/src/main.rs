@@ -13,14 +13,17 @@ use tracing::{error, info};
 
 mod config;
 mod plugin_client;
+mod websocket;
 
 use config::Config;
 use plugin_client::PluginClient;
+use websocket::Broadcaster;
 
 #[derive(Clone)]
 struct AppState {
     plugin_client: Arc<RwLock<PluginClient>>,
     config: Arc<Config>,
+    broadcaster: Arc<Broadcaster>,
 }
 
 #[tokio::main]
@@ -67,10 +70,19 @@ async fn main() {
     let state = AppState { 
         plugin_client,
         config: Arc::new(config),
+        broadcaster: Arc::new(Broadcaster::new()),
     };
+
+    // Start background task for broadcasting updates
+    let broadcast_state = state.clone();
+    tokio::spawn(async move {
+        websocket::broadcast_updates(broadcast_state).await;
+    });
 
     // Build application with routes
     let app = Router::new()
+        // WebSocket route
+        .route("/ws", get(websocket::ws_handler))
         // API routes
         .route("/api/metrics", get(get_metrics))
         .route("/api/players", get(get_players))
