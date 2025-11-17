@@ -19,6 +19,7 @@
                 <li><a href="#" class="nav-link active" data-page="status">Status</a></li>
                 <li><a href="#" class="nav-link" data-page="server">Server Info</a></li>
                 <li><a href="#" class="nav-link" data-page="plugins">Plugins</a></li>
+                <li><a href="#" class="nav-link" data-page="logs">Logs</a></li>
                 
                 <li class="nav-section-title"># Player Management</li>
                 <li><a href="#" class="nav-link" data-page="players">Players</a></li>
@@ -30,6 +31,9 @@
                 <li><a href="#" class="nav-link" data-page="console">Console</a></li>
                 <li><a href="#" class="nav-link" data-page="chat">Chat</a></li>
                 <li><a href="#" class="nav-link" data-page="settings">Server Settings</a></li>
+                
+                <li class="nav-section-title"># MODS</li>
+                <li><a href="#" class="nav-link" data-page="custom-recipes">Custom Recipes</a></li>
             </ul>
         </nav>
 
@@ -48,6 +52,10 @@
                     <div class="metric-card">
                         <h3>Current Players</h3>
                         <div class="metric-value" id="current-players">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <h3>Server Uptime</h3>
+                        <div class="metric-value" id="server-uptime">-</div>
                     </div>
                     <div class="metric-card">
                         <h3>TPS</h3>
@@ -75,6 +83,9 @@
             <div id="players-page" class="page">
                 <h2>Players</h2>
                 <p class="subtitle">All players who have joined the server</p>
+                <div class="form-section">
+                    <input type="text" id="player-search" placeholder="Search by name or UUID..." autocomplete="off">
+                </div>
                 <div class="table-container">
                     <table id="players-table">
                         <thead>
@@ -195,6 +206,29 @@
                 <div id="server-worlds" class="info-grid"></div>
             </div>
 
+            <!-- Logs Page -->
+            <div id="logs-page" class="page">
+                <h2>Server Logs</h2>
+                <p class="subtitle">Combined console and chat logs (last 5000 lines)</p>
+                
+                <div class="logs-controls">
+                    <div class="logs-search-container">
+                        <input type="text" id="logs-search" placeholder="Search logs..." autocomplete="off">
+                    </div>
+                    <div class="logs-options">
+                        <label class="autoscroll-toggle">
+                            <input type="checkbox" id="autoscroll-toggle" checked>
+                            <span>Auto-scroll</span>
+                        </label>
+                        <button id="clear-logs-search" style="display: none;">Clear Search</button>
+                    </div>
+                </div>
+                
+                <div class="logs-container">
+                    <div class="logs-output" id="logs-output"></div>
+                </div>
+            </div>
+
             <!-- Console Page -->
             <div id="console-page" class="page">
                 <h2>Console</h2>
@@ -234,6 +268,75 @@
                 <div class="form-section" style="margin-top: 1.5rem;">
                     <h3>Game Rules</h3>
                     <div id="gamerules-form"></div>
+                </div>
+            </div>
+
+            <!-- Custom Recipes Page -->
+            <div id="custom-recipes-page" class="page">
+                <h2>Custom Crafting Recipes</h2>
+                <p class="subtitle">Create and manage custom crafting recipes</p>
+                
+                <div class="info-notice" style="background-color: #2a2a2a; border-left: 3px solid #f90; padding: 1rem; margin-bottom: 1.5rem; border-radius: 4px;">
+                    <strong>⚠️ Notice:</strong> Recipe changes require a server restart to take effect. Changes are saved immediately but won't be active in-game until the server is restarted.
+                </div>
+                
+                <div class="form-section">
+                    <h3>Add New Recipe</h3>
+                    <form id="recipe-form">
+                        <div class="recipe-type-selector">
+                            <label>
+                                <input type="radio" name="recipe-type" value="shaped" checked>
+                                Shaped (exact position required)
+                            </label>
+                            <label>
+                                <input type="radio" name="recipe-type" value="shapeless">
+                                Shapeless (any position)
+                            </label>
+                        </div>
+                        
+                        <div class="crafting-grid-container">
+                            <h4>Ingredients (3×3 Crafting Grid)</h4>
+                            <div class="crafting-grid" id="crafting-grid">
+                                <input type="text" placeholder="Item ID" data-slot="0" class="crafting-slot">
+                                <input type="text" placeholder="Item ID" data-slot="1" class="crafting-slot">
+                                <input type="text" placeholder="Item ID" data-slot="2" class="crafting-slot">
+                                <input type="text" placeholder="Item ID" data-slot="3" class="crafting-slot">
+                                <input type="text" placeholder="Item ID" data-slot="4" class="crafting-slot">
+                                <input type="text" placeholder="Item ID" data-slot="5" class="crafting-slot">
+                                <input type="text" placeholder="Item ID" data-slot="6" class="crafting-slot">
+                                <input type="text" placeholder="Item ID" data-slot="7" class="crafting-slot">
+                                <input type="text" placeholder="Item ID" data-slot="8" class="crafting-slot">
+                            </div>
+                        </div>
+                        
+                        <div class="recipe-result">
+                            <h4>Result</h4>
+                            <div class="result-inputs">
+                                <input type="text" id="result-item" placeholder="Result Item ID" required>
+                                <input type="number" id="result-count" placeholder="Count" value="1" min="1" max="64" required>
+                            </div>
+                        </div>
+                        
+                        <div class="recipe-actions">
+                            <button type="submit" id="save-recipe-btn">Save Recipe</button>
+                            <button type="button" id="clear-recipe-btn">Clear</button>
+                        </div>
+                    </form>
+                </div>
+                
+                <div class="table-container" style="margin-top: 2rem;">
+                    <h3>Existing Recipes</h3>
+                    <table id="recipes-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Type</th>
+                                <th>Result</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recipes-list"></tbody>
+                    </table>
                 </div>
             </div>
         </main>

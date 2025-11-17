@@ -894,3 +894,171 @@ input[type="text"]:focus {
     font-size: 0.85rem;
     margin: 0;
 }
+
+/* Custom Recipes Styles */
+.recipe-type-selector {
+    margin-bottom: 1.5rem;
+    display: flex;
+    gap: 2rem;
+}
+
+.recipe-type-selector label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    color: var(--text-light);
+}
+
+.recipe-type-selector input[type="radio"] {
+    cursor: pointer;
+}
+
+.recipe-type-selector input[type="radio"]:checked + * {
+    color: var(--text);
+}
+
+.crafting-grid-container {
+    margin-bottom: 1.5rem;
+}
+
+.crafting-grid-container h4 {
+    margin-bottom: 0.75rem;
+    color: var(--text);
+}
+
+.crafting-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+    max-width: 400px;
+    margin-bottom: 1.5rem;
+}
+
+.crafting-slot {
+    background: var(--secondary);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 1rem;
+    text-align: center;
+    font-family: monospace;
+    font-size: 0.9rem;
+}
+
+.crafting-slot:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: #2a2a2a;
+}
+
+.crafting-slot::placeholder {
+    color: var(--text-light);
+    opacity: 0.5;
+}
+
+.recipe-result {
+    margin-bottom: 1.5rem;
+}
+
+.recipe-result h4 {
+    margin-bottom: 0.75rem;
+    color: var(--text);
+}
+
+.result-inputs {
+    display: flex;
+    gap: 1rem;
+    max-width: 400px;
+}
+
+.result-inputs input {
+    flex: 1;
+}
+
+.result-inputs input[type="number"] {
+    max-width: 100px;
+}
+
+.recipe-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.recipe-actions button {
+    padding: 0.75rem 1.5rem;
+}
+
+/* Logs Page Styles */
+.logs-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.logs-search-container {
+    flex: 1;
+    min-width: 250px;
+}
+
+.logs-search-container input {
+    width: 100%;
+}
+
+.logs-options {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.autoscroll-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    color: var(--text-light);
+    user-select: none;
+}
+
+.autoscroll-toggle input[type="checkbox"] {
+    cursor: pointer;
+}
+
+.autoscroll-toggle:hover {
+    color: var(--text);
+}
+
+.logs-container {
+    background: var(--secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    height: calc(100vh - 300px);
+    overflow-y: auto;
+    padding: 1rem;
+    font-family: monospace;
+    font-size: 0.9rem;
+}
+
+.logs-output {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    color: var(--text);
+    line-height: 1.5;
+}
+
+.logs-output .log-line {
+    padding: 0.25rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.logs-output .log-line:last-child {
+    border-bottom: none;
+}
+
+.logs-output .log-line.highlight {
+    background-color: rgba(255, 204, 0, 0.15);
+    border-left: 3px solid var(--warning);
+    padding-left: 0.5rem;
+}
