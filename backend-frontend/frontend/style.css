@@ -1430,17 +1430,24 @@ input[type="text"]:focus {
 
 .image-viewer-content .close {
     position: absolute;
-    top: -40px;
-    right: 0;
+    top: 10px;
+    right: 10px;
     font-size: 2rem;
     color: white;
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: rgba(0, 0, 0, 0.8);
     border-radius: 50%;
     width: 40px;
     height: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
+    z-index: 1000;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.image-viewer-content .close:hover {
+    background-color: rgba(255, 0, 0, 0.8);
 }
 
 .image-viewer-content img {
