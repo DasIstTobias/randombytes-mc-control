@@ -1278,12 +1278,13 @@ input[type="text"]:focus {
 }
 
 .file-actions button.download-btn {
-    background-color: #44aaff;
-    color: white;
+    background-color: transparent;
+    color: #44aaff;
+    border: 1px solid #44aaff;
 }
 
 .file-actions button.download-btn:hover {
-    background-color: #5bbbff;
+    background-color: rgba(68, 170, 255, 0.1);
 }
 
 .file-drop-overlay {

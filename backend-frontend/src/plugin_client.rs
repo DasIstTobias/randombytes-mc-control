@@ -318,4 +318,8 @@ impl PluginClient {
         });
         self.post(&format!("/files?path={}", encoded_path), body).await
     }
+    
+    pub async fn get_file_changelog(&self) -> Result<Value, Box<dyn Error>> {
+        self.get("/files/changelog").await
+    }
 }

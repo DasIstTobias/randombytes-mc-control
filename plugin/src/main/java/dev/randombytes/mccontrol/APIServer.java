@@ -59,6 +59,7 @@ public class APIServer {
             server.createContext("/api/recipe", new RecipeHandler());
             server.createContext("/api/logs", new LogsHandler());
             server.createContext("/api/files", new FilesHandler());
+            server.createContext("/api/files/changelog", new FileChangelogHandler());
             
             server.setExecutor(null);
             server.start();
@@ -1016,6 +1017,30 @@ public class APIServer {
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error downloading file", e);
                 sendError(exchange, 500, "Failed to download file");
+            }
+        }
+    }
+    
+    /**
+     * Handler for file changelog endpoint
+     */
+    private class FileChangelogHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            try {
+                if (!"GET".equals(exchange.getRequestMethod())) {
+                    sendResponse(exchange, 405, createErrorResponse("Method not allowed"));
+                    return;
+                }
+                
+                JsonArray entries = plugin.getFileManager().getChangeLogger().getEntries();
+                JsonObject response = new JsonObject();
+                response.add("entries", entries);
+                
+                sendResponse(exchange, 200, response);
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.SEVERE, "Error in FileChangelogHandler", e);
+                sendResponse(exchange, 500, createErrorResponse("Internal server error"));
             }
         }
     }

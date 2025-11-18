@@ -19,6 +19,7 @@ import java.util.logging.Level;
 public class FileManager {
     private final MCControlPlugin plugin;
     private final Path serverRoot;
+    private final FileChangeLogger changeLogger;
     private static final long MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
     private static final int CHUNK_SIZE = 8192;
     
@@ -32,8 +33,16 @@ public class FileManager {
         // The server root is the directory containing the server JAR (where PaperMC/Spigot is)
         // Bukkit.getWorldContainer() returns the directory where worlds are stored, which is the server root
         this.serverRoot = Bukkit.getWorldContainer().toPath().toAbsolutePath().normalize();
+        this.changeLogger = new FileChangeLogger(plugin);
         
         plugin.getLogger().info("File Manager initialised with root: " + serverRoot.toString());
+    }
+    
+    /**
+     * Gets the change logger
+     */
+    public FileChangeLogger getChangeLogger() {
+        return changeLogger;
     }
     
     /**
@@ -246,6 +255,9 @@ public class FileManager {
             response.addProperty("success", true);
             response.addProperty("message", "File written successfully");
             
+            // Log the operation
+            changeLogger.addEntry("Write /" + requestedPath);
+            
         } catch (SecurityException e) {
             plugin.getLogger().warning("Security violation in writeFile: " + e.getMessage());
             response.addProperty("error", "Access denied: " + e.getMessage());
@@ -289,6 +301,9 @@ public class FileManager {
             
             response.addProperty("success", true);
             response.addProperty("message", "Deleted successfully");
+            
+            // Log the operation
+            changeLogger.addEntry("Delete /" + requestedPath);
             
         } catch (SecurityException e) {
             plugin.getLogger().warning("Security violation in deleteFile: " + e.getMessage());
@@ -346,6 +361,9 @@ public class FileManager {
             response.addProperty("message", "Renamed successfully");
             response.addProperty("newPath", serverRoot.relativize(newPath).toString().replace("\\", "/"));
             
+            // Log the operation
+            changeLogger.addEntry("Rename /" + requestedPath + " to " + newName);
+            
         } catch (SecurityException e) {
             plugin.getLogger().warning("Security violation in renameFile: " + e.getMessage());
             response.addProperty("error", "Access denied: " + e.getMessage());
@@ -377,6 +395,9 @@ public class FileManager {
             
             response.addProperty("success", true);
             response.addProperty("message", "Directory created successfully");
+            
+            // Log the operation
+            changeLogger.addEntry("Create folder /" + requestedPath);
             
         } catch (SecurityException e) {
             plugin.getLogger().warning("Security violation in createDirectory: " + e.getMessage());

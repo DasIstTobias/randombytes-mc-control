@@ -2095,9 +2095,9 @@ function updateLineNumbers() {
     
     let html = '';
     for (let i = 1; i <= lines; i++) {
-        html += i + '\n';
+        html += `<div>${i}</div>`;
     }
-    lineNumbers.textContent = html;
+    lineNumbers.innerHTML = html;
     
     // Sync scroll position
     syncScroll();
@@ -2265,18 +2265,27 @@ function openImageViewer(path) {
 
 function showChangeLog() {
     const output = document.getElementById('changelog-output');
-    output.innerHTML = '';
+    output.innerHTML = '<div class="changelog-line">Loading...</div>';
     
-    if (fileChangeLog.length === 0) {
-        output.innerHTML = '<div class="changelog-line">No actions recorded yet</div>';
-    } else {
-        fileChangeLog.forEach(entry => {
-            const lineDiv = document.createElement('div');
-            lineDiv.className = 'changelog-line';
-            lineDiv.textContent = entry;
-            output.appendChild(lineDiv);
-        });
-    }
+    // Fetch from backend
+    API.get('/files/changelog').then(data => {
+        output.innerHTML = '';
+        
+        const entries = data.entries || [];
+        if (entries.length === 0) {
+            output.innerHTML = '<div class="changelog-line">No actions recorded yet</div>';
+        } else {
+            entries.forEach(entry => {
+                const lineDiv = document.createElement('div');
+                lineDiv.className = 'changelog-line';
+                lineDiv.textContent = entry;
+                output.appendChild(lineDiv);
+            });
+        }
+    }).catch(error => {
+        console.error('Error loading changelog:', error);
+        output.innerHTML = '<div class="changelog-line">Failed to load changelog</div>';
+    });
     
     document.getElementById('changelog-modal').classList.add('active');
 }

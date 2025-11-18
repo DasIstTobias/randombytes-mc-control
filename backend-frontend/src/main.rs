@@ -114,6 +114,7 @@ async fn main() {
         .route("/api/files", post(file_action))
         .route("/api/files", axum::routing::delete(delete_file))
         .route("/api/files/download", get(download_file))
+        .route("/api/files/changelog", get(get_file_changelog))
         // Serve frontend
         .nest_service("/", ServeDir::new("frontend"))
         .with_state(state.clone());
@@ -882,6 +883,17 @@ async fn download_file(
             error!("Failed to download file: {}", e);
             Err(ApiError::PluginError(e.to_string()))
         }
+    }
+}
+
+async fn get_file_changelog(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Value>, (StatusCode, &'static str)> {
+    let client = state.plugin_client.read().await;
+    
+    match client.get_file_changelog().await {
+        Ok(data) => Ok(Json(data)),
+        Err(_) => Err((StatusCode::INTERNAL_SERVER_ERROR, "Failed to get changelog"))
     }
 }
 
