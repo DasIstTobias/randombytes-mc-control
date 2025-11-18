@@ -14,6 +14,10 @@ A comprehensive, secure Minecraft server management solution consisting of three
 - 📝 **Whitelist/Blacklist**: Easily manage server access
 - 🔌 **Plugin Information**: View all installed plugins
 - 💻 **Console Access**: Execute commands and view server logs
+- 💬 **Chat Integration**: Send messages and commands as the server
+- ⚙️ **Server Settings**: Configure server properties and game rules
+- 🔧 **Custom Recipes**: Create and manage custom crafting recipes
+- 📁 **File Manager**: Browse, upload, download, edit, and manage server files securely
 - 🐳 **Docker Ready**: Deploy with a single command
 
 ## Architecture
@@ -141,6 +145,15 @@ Access the "Server Metrics" page to view real-time graphs showing:
 2. Enter player name and UUID
 3. Click "Add to Whitelist"
 4. View current whitelist below
+
+### Managing Server Files
+1. Navigate to "File Manager" page
+2. Browse directories by clicking folder names or using breadcrumb navigation
+3. Upload files by clicking "Upload File" or dragging files into the window
+4. Edit text files by double-clicking or using the "Edit" button
+5. Create folders, rename, or delete files using the toolbar or context menu (right-click)
+6. Search and filter files using the search box
+7. Sort files by clicking column headers (Name, Size, Modified)
 
 ## Troubleshooting
 

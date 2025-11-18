@@ -146,9 +146,23 @@ The frontend is a single-page application built with vanilla HTML, CSS, and Java
 - **Players**: List of all players with online status, play time, and management options
 - **Whitelist**: View and manage the server whitelist
 - **Blacklist**: View and manage banned players
+- **Operators**: Manage server operators
 - **Plugins**: List of installed plugins
 - **Server Info**: Detailed server information
 - **Console**: View logs and execute commands
+- **Chat**: Send messages and commands as the server
+- **Server Settings**: Configure server properties and game rules
+- **Custom Recipes**: Create and manage custom crafting recipes
+- **File Manager**: Browse, upload, download, edit, and manage server files securely
+  - Browse directories within the Minecraft server folder
+  - Upload files with drag & drop support (up to 100MB)
+  - Create and delete folders
+  - Rename files and folders
+  - Edit text files inline (`.txt`, `.yml`, `.json`, `.properties`, etc.)
+  - Search and filter files
+  - Sort by name, size, or modified date
+  - Context menu for quick actions
+  - Path traversal protection
 
 The frontend automatically connects to the backend API and updates in real-time.
 
