@@ -1447,7 +1447,7 @@ input[type="text"]:focus {
 }
 
 .image-viewer-content .close:hover {
-    background-color: rgba(255, 0, 0, 0.8);
+    background-color: var(--danger);
 }
 
 .image-viewer-content img {
