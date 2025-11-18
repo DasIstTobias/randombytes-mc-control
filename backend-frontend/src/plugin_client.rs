@@ -272,4 +272,50 @@ impl PluginClient {
     pub async fn get_logs(&self) -> Result<Value, Box<dyn Error>> {
         self.get("/logs").await
     }
+    
+    // File manager methods
+    pub async fn list_files(&self, path: &str) -> Result<Value, Box<dyn Error>> {
+        let encoded_path = urlencoding::encode(path);
+        self.get(&format!("/files?path={}", encoded_path)).await
+    }
+    
+    pub async fn read_file(&self, path: &str) -> Result<Value, Box<dyn Error>> {
+        let encoded_path = urlencoding::encode(path);
+        let body = serde_json::json!({
+            "action": "read"
+        });
+        self.post(&format!("/files?path={}", encoded_path), body).await
+    }
+    
+    pub async fn write_file(&self, path: &str, content: &str, is_base64: bool) -> Result<Value, Box<dyn Error>> {
+        let encoded_path = urlencoding::encode(path);
+        let body = serde_json::json!({
+            "action": "write",
+            "content": content,
+            "isBase64": is_base64
+        });
+        self.post(&format!("/files?path={}", encoded_path), body).await
+    }
+    
+    pub async fn delete_file(&self, path: &str) -> Result<Value, Box<dyn Error>> {
+        let encoded_path = urlencoding::encode(path);
+        self.delete(&format!("/files?path={}", encoded_path)).await
+    }
+    
+    pub async fn rename_file(&self, path: &str, new_name: &str) -> Result<Value, Box<dyn Error>> {
+        let encoded_path = urlencoding::encode(path);
+        let body = serde_json::json!({
+            "action": "rename",
+            "newName": new_name
+        });
+        self.post(&format!("/files?path={}", encoded_path), body).await
+    }
+    
+    pub async fn create_directory(&self, path: &str) -> Result<Value, Box<dyn Error>> {
+        let encoded_path = urlencoding::encode(path);
+        let body = serde_json::json!({
+            "action": "mkdir"
+        });
+        self.post(&format!("/files?path={}", encoded_path), body).await
+    }
 }

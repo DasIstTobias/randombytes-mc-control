@@ -21,6 +21,7 @@ public class MCControlPlugin extends JavaPlugin {
     private PlayerDataManager playerDataManager;
     private CustomRecipeManager customRecipeManager;
     private LogManager logManager;
+    private FileManager fileManager;
     
     private String apiKey;
     private int port;
@@ -52,6 +53,7 @@ public class MCControlPlugin extends JavaPlugin {
         playerDataManager = new PlayerDataManager(this);
         customRecipeManager = new CustomRecipeManager(this);
         logManager = new LogManager(this);
+        fileManager = new FileManager(this);
         
         // Attach console log handler to capture server logs
         attachConsoleLogHandler();
@@ -180,6 +182,10 @@ public class MCControlPlugin extends JavaPlugin {
     
     public LogManager getLogManager() {
         return logManager;
+    }
+    
+    public FileManager getFileManager() {
+        return fileManager;
     }
     
     public long getUptime() {
