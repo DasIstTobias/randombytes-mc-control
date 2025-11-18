@@ -1029,7 +1029,7 @@ public class APIServer {
         public void handle(HttpExchange exchange) throws IOException {
             try {
                 if (!"GET".equals(exchange.getRequestMethod())) {
-                    sendResponse(exchange, 405, createErrorResponse("Method not allowed"));
+                    sendError(exchange, 405, "Method not allowed");
                     return;
                 }
                 
@@ -1037,10 +1037,10 @@ public class APIServer {
                 JsonObject response = new JsonObject();
                 response.add("entries", entries);
                 
-                sendResponse(exchange, 200, response);
+                sendResponse(exchange, 200, plugin.getGson().toJson(response));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error in FileChangelogHandler", e);
-                sendResponse(exchange, 500, createErrorResponse("Internal server error"));
+                sendError(exchange, 500, "Internal server error");
             }
         }
     }
