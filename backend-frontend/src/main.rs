@@ -887,13 +887,16 @@ async fn download_file(
 }
 
 async fn get_file_changelog(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<Value>, (StatusCode, &'static str)> {
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, ApiError> {
     let client = state.plugin_client.read().await;
     
     match client.get_file_changelog().await {
         Ok(data) => Ok(Json(data)),
-        Err(_) => Err((StatusCode::INTERNAL_SERVER_ERROR, "Failed to get changelog"))
+        Err(e) => {
+            error!("Failed to get changelog: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
     }
 }
 
