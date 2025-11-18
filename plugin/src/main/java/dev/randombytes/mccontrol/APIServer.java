@@ -1,5 +1,6 @@
 package dev.randombytes.mccontrol;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpHandler;
@@ -58,6 +59,8 @@ public class APIServer {
             server.createContext("/api/recipes", new RecipesHandler());
             server.createContext("/api/recipe", new RecipeHandler());
             server.createContext("/api/logs", new LogsHandler());
+            server.createContext("/api/files", new FilesHandler());
+            server.createContext("/api/files/changelog", new FileChangelogHandler());
             
             server.setExecutor(null);
             server.start();
@@ -875,6 +878,169 @@ public class APIServer {
                 sendResponse(exchange, 200, plugin.getGson().toJson(logs));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error getting logs", e);
+                sendError(exchange, 500, "Internal server error");
+            }
+        }
+    }
+    
+    // Files handler for file manager operations
+    private class FilesHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!validateAuth(exchange)) {
+                sendError(exchange, 401, "Unauthorized");
+                return;
+            }
+            
+            try {
+                String method = exchange.getRequestMethod();
+                String query = exchange.getRequestURI().getQuery();
+                String path = "";
+                
+                // Parse path parameter if present
+                if (query != null) {
+                    String[] params = query.split("&");
+                    for (String param : params) {
+                        if (param.startsWith("path=")) {
+                            path = java.net.URLDecoder.decode(param.substring(5), "UTF-8");
+                            break;
+                        }
+                    }
+                }
+                
+                if ("GET".equals(method)) {
+                    // Check if this is a download request
+                    if (query != null && query.contains("download=true")) {
+                        handleFileDownload(exchange, path);
+                    } else {
+                        // List files
+                        JsonObject result = plugin.getFileManager().listFiles(path);
+                        sendResponse(exchange, 200, plugin.getGson().toJson(result));
+                    }
+                } else if ("POST".equals(method)) {
+                    String body = readRequestBody(exchange);
+                    JsonObject request = plugin.getGson().fromJson(body, JsonObject.class);
+                    String action = request.has("action") ? request.get("action").getAsString() : "write";
+                    
+                    JsonObject result;
+                    switch (action) {
+                        case "write":
+                        case "create":
+                            String content = request.get("content").getAsString();
+                            boolean isBase64 = request.has("isBase64") && request.get("isBase64").getAsBoolean();
+                            result = plugin.getFileManager().writeFile(path, content, isBase64);
+                            break;
+                        case "rename":
+                            String newName = request.get("newName").getAsString();
+                            result = plugin.getFileManager().renameFile(path, newName);
+                            break;
+                        case "mkdir":
+                            result = plugin.getFileManager().createDirectory(path);
+                            break;
+                        case "read":
+                            result = plugin.getFileManager().readFile(path);
+                            break;
+                        default:
+                            sendError(exchange, 400, "Unknown action: " + action);
+                            return;
+                    }
+                    
+                    sendResponse(exchange, 200, plugin.getGson().toJson(result));
+                } else if ("DELETE".equals(method)) {
+                    JsonObject result = plugin.getFileManager().deleteFile(path);
+                    sendResponse(exchange, 200, plugin.getGson().toJson(result));
+                } else {
+                    sendError(exchange, 405, "Method not allowed");
+                }
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.SEVERE, "Error handling file request", e);
+                sendError(exchange, 500, "Internal server error: " + e.getMessage());
+            }
+        }
+        
+        private void handleFileDownload(HttpExchange exchange, String path) throws IOException {
+            try {
+                JsonObject fileData = plugin.getFileManager().readFile(path);
+                
+                if (fileData.has("error")) {
+                    sendError(exchange, 404, fileData.get("error").getAsString());
+                    return;
+                }
+                
+                // Get file content
+                String content = fileData.get("content").getAsString();
+                boolean isBase64 = fileData.has("encoding") && 
+                                   fileData.get("encoding").getAsString().equals("base64");
+                
+                byte[] bytes;
+                if (isBase64) {
+                    bytes = Base64.getDecoder().decode(content);
+                } else {
+                    bytes = content.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                }
+                
+                // Determine filename
+                String filename = path;
+                if (filename.contains("/")) {
+                    filename = filename.substring(filename.lastIndexOf("/") + 1);
+                }
+                if (filename.isEmpty()) {
+                    filename = "download";
+                }
+                
+                // Determine content type based on file extension
+                String contentType = "application/octet-stream";
+                if (filename.endsWith(".txt")) {
+                    contentType = "text/plain";
+                } else if (filename.endsWith(".json")) {
+                    contentType = "application/json";
+                } else if (filename.endsWith(".yml") || filename.endsWith(".yaml")) {
+                    contentType = "text/yaml";
+                } else if (filename.endsWith(".properties")) {
+                    contentType = "text/plain";
+                } else if (filename.endsWith(".jar")) {
+                    contentType = "application/java-archive";
+                } else if (filename.endsWith(".log")) {
+                    contentType = "text/plain";
+                }
+                
+                // Set headers
+                exchange.getResponseHeaders().set("Content-Type", contentType);
+                exchange.getResponseHeaders().set("Content-Disposition", 
+                    "attachment; filename=\"" + filename + "\"");
+                exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+                
+                // Send response
+                exchange.sendResponseHeaders(200, bytes.length);
+                OutputStream os = exchange.getResponseBody();
+                os.write(bytes);
+                os.close();
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.SEVERE, "Error downloading file", e);
+                sendError(exchange, 500, "Failed to download file");
+            }
+        }
+    }
+    
+    /**
+     * Handler for file changelog endpoint
+     */
+    private class FileChangelogHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            try {
+                if (!"GET".equals(exchange.getRequestMethod())) {
+                    sendError(exchange, 405, "Method not allowed");
+                    return;
+                }
+                
+                JsonArray entries = plugin.getFileManager().getChangeLogger().getEntries();
+                JsonObject response = new JsonObject();
+                response.add("entries", entries);
+                
+                sendResponse(exchange, 200, plugin.getGson().toJson(response));
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.SEVERE, "Error in FileChangelogHandler", e);
                 sendError(exchange, 500, "Internal server error");
             }
         }

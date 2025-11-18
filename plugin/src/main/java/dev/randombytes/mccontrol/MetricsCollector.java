@@ -6,7 +6,9 @@ import org.bukkit.Bukkit;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.OperatingSystemMXBean;
+import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Queue;
 
 public class MetricsCollector {
@@ -41,11 +43,13 @@ public class MetricsCollector {
             getCPUUsage()
         );
         
-        snapshots.offer(snapshot);
-        
-        // Remove old snapshots
-        while (snapshots.size() > maxSnapshots) {
-            snapshots.poll();
+        synchronized (snapshots) {
+            snapshots.offer(snapshot);
+            
+            // Remove old snapshots
+            while (snapshots.size() > maxSnapshots) {
+                snapshots.poll();
+            }
         }
     }
     
@@ -53,7 +57,13 @@ public class MetricsCollector {
         JsonObject result = new JsonObject();
         JsonArray data = new JsonArray();
         
-        for (MetricSnapshot snapshot : snapshots) {
+        // Create a copy to avoid ConcurrentModificationException
+        List<MetricSnapshot> snapshotsCopy;
+        synchronized (snapshots) {
+            snapshotsCopy = new ArrayList<>(snapshots);
+        }
+        
+        for (MetricSnapshot snapshot : snapshotsCopy) {
             JsonObject point = new JsonObject();
             point.addProperty("timestamp", snapshot.timestamp);
             point.addProperty("players", snapshot.playerCount);
@@ -64,7 +74,7 @@ public class MetricsCollector {
         }
         
         result.add("metrics", data);
-        result.addProperty("count", snapshots.size());
+        result.addProperty("count", snapshotsCopy.size());
         
         return result;
     }
