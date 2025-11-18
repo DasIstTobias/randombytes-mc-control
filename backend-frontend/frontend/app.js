@@ -133,11 +133,19 @@ const wsDataCallbacks = {
     ops: []
 };
 
+let wsReadyPromise = null;
+let wsReadyResolve = null;
+
 function connectWebSocket() {
     // Don't reconnect if we're already connected or trying to connect
     if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
-        return;
+        return wsReadyPromise;
     }
+
+    // Create a promise that resolves when WebSocket is ready and has initial data
+    wsReadyPromise = new Promise((resolve) => {
+        wsReadyResolve = resolve;
+    });
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -157,12 +165,21 @@ function connectWebSocket() {
                 clearTimeout(wsReconnectTimer);
                 wsReconnectTimer = null;
             }
+            
+            // Don't resolve yet - wait for initial data
         };
 
         ws.onmessage = (event) => {
             try {
                 const message = JSON.parse(event.data);
                 handleWebSocketMessage(message);
+                
+                // After receiving first batch of initial data, resolve the ready promise
+                if (wsReadyResolve && wsDataCache.server_info && wsDataCache.metrics) {
+                    console.log('WebSocket initial data received, ready to render UI');
+                    wsReadyResolve();
+                    wsReadyResolve = null;
+                }
             } catch (error) {
                 console.error('Error parsing WebSocket message:', error);
             }
@@ -176,6 +193,10 @@ function connectWebSocket() {
             console.log('WebSocket disconnected');
             ws = null;
             showOfflineOverlay();
+            
+            // Reset ready promise
+            wsReadyPromise = null;
+            wsReadyResolve = null;
 
             // Attempt to reconnect with exponential backoff
             if (wsReconnectAttempts < WS_MAX_RECONNECT_ATTEMPTS) {
@@ -194,6 +215,8 @@ function connectWebSocket() {
         console.error('Error creating WebSocket:', error);
         showOfflineOverlay();
     }
+    
+    return wsReadyPromise;
 }
 
 function handleWebSocketMessage(message) {
@@ -519,47 +542,31 @@ let serverIdentityData = null; // Store server identity data
 let geyserMCDetected = false;
 let geyserMCPort = null;
 
-// Load sidebar server info on page load
-document.addEventListener('DOMContentLoaded', async () => {
-    await loadSidebarServerInfo();
-});
-
-async function loadSidebarServerInfo() {
-    try {
-        const [serverData, geyserData] = await Promise.all([
-            API.get('/server'),
-            API.get('/geysermc')
-        ]);
+// Function to update sidebar from WebSocket data
+function updateSidebarServerInfo(serverData) {
+    // Store server identity
+    serverIdentityData = serverData;
+    
+    // Populate sidebar
+    const sidebarInfo = document.getElementById('sidebar-server-info');
+    if (serverData) {
+        let html = '';
         
-        // Store server identity
-        serverIdentityData = serverData;
+        // Try to load server icon
+        html += `<img src="/api/server-icon" alt="Server Icon" onerror="this.style.display='none'">`;
         
-        // Check for GeyserMC
-        if (geyserData.detected) {
-            geyserMCDetected = true;
-            geyserMCPort = geyserData.bedrockPort || null;
-        }
+        html += `<div class="sidebar-server-details">`;
+        html += `<div class="server-address">${escapeHtml(serverData.ip || 'localhost')}</div>`;
+        html += `<div class="server-port">Port: ${serverData.port}</div>`;
+        html += `</div>`;
         
-        // Populate sidebar
-        const sidebarInfo = document.getElementById('sidebar-server-info');
-        if (serverData) {
-            let html = '';
-            
-            // Try to load server icon
-            html += `<img src="/api/server-icon" alt="Server Icon" onerror="this.style.display='none'">`;
-            
-            html += `<div class="sidebar-server-details">`;
-            html += `<div class="server-address">${escapeHtml(serverData.ip || 'localhost')}</div>`;
-            html += `<div class="server-port">Port: ${serverData.port}</div>`;
-            html += `</div>`;
-            
-            sidebarInfo.innerHTML = html;
-            sidebarInfo.style.display = 'flex';
-        }
-    } catch (error) {
-        console.error('Error loading sidebar server info:', error);
+        sidebarInfo.innerHTML = html;
+        sidebarInfo.style.display = 'flex';
     }
 }
+
+// Register callback to update sidebar when server_info is received
+onWebSocketData('server_info', updateSidebarServerInfo);
 
 
 function updateServerIdentityHeader(serverData) {
@@ -900,7 +907,7 @@ async function toggleBan(uuid, isBanned) {
     try {
         const action = isBanned ? 'unban' : 'ban';
         await API.post(`/player/${uuid}/action`, { action });
-        await loadPlayers();
+        // WebSocket will push updated player data automatically
     } catch (error) {
         console.error('Error toggling ban:', error);
         await customAlert('Failed to ' + (isBanned ? 'unban' : 'ban') + ' player');
@@ -911,7 +918,7 @@ async function toggleOp(uuid, isOp) {
     try {
         const action = isOp ? 'deop' : 'op';
         await API.post(`/player/${uuid}/action`, { action });
-        await loadPlayers();
+        // WebSocket will push updated player data automatically
     } catch (error) {
         console.error('Error toggling OP:', error);
         await customAlert('Failed to ' + (isOp ? 'de-op' : 'op') + ' player');
@@ -925,7 +932,7 @@ async function kickPlayer(uuid, name) {
     try {
         await API.post(`/player/${uuid}/action`, { action: 'kick' });
         await customAlert(`${name} has been kicked from the server`);
-        await loadPlayers();
+        // WebSocket will push updated player data automatically
     } catch (error) {
         console.error('Error kicking player:', error);
         await customAlert('Failed to kick player: ' + error.message);
@@ -1206,6 +1213,7 @@ async function loadPlugins() {
 
 // Server Info
 let serverInfoCallback = null;
+let cachedGeyserData = null; // Cache GeyserMC data
 
 async function loadServerInfo() {
     // Clear any existing callback
@@ -1214,16 +1222,23 @@ async function loadServerInfo() {
         serverInfoCallback = null;
     }
     
-    // Register WebSocket callback for server info
-    serverInfoCallback = async (data) => {
-        // Fetch GeyserMC data separately (not in WebSocket yet)
-        let geyserData = { detected: false };
+    // Fetch GeyserMC data once and cache it (not in WebSocket)
+    if (!cachedGeyserData) {
         try {
-            geyserData = await API.get('/geysermc');
+            cachedGeyserData = await API.get('/geysermc');
+            // Store for sidebar use
+            if (cachedGeyserData.detected) {
+                geyserMCDetected = true;
+                geyserMCPort = cachedGeyserData.bedrockPort || null;
+            }
         } catch (error) {
             console.error('Error fetching GeyserMC info:', error);
+            cachedGeyserData = { detected: false };
         }
-        
+    }
+    
+    // Register WebSocket callback for server info
+    serverInfoCallback = async (data) => {
         const infoContainer = document.getElementById('server-info');
         const worldsContainer = document.getElementById('server-worlds');
         infoContainer.innerHTML = '';
@@ -1252,23 +1267,23 @@ async function loadServerInfo() {
         });
         infoContainer.appendChild(settingsCard);
         
-        // GeyserMC info (if detected)
-        if (geyserData.detected) {
+        // GeyserMC info (if detected) - use cached data
+        if (cachedGeyserData && cachedGeyserData.detected) {
             const geyserInfo = {
-                'Version': geyserData.version || 'Unknown',
-                'Bedrock Port': geyserData.bedrockPort || 'Not configured'
+                'Version': cachedGeyserData.version || 'Unknown',
+                'Bedrock Port': cachedGeyserData.bedrockPort || 'Not configured'
             };
             
-            if (geyserData.bedrockAddress && geyserData.bedrockAddress !== '0.0.0.0') {
-                geyserInfo['Bedrock Address'] = geyserData.bedrockAddress;
+            if (cachedGeyserData.bedrockAddress && cachedGeyserData.bedrockAddress !== '0.0.0.0') {
+                geyserInfo['Bedrock Address'] = cachedGeyserData.bedrockAddress;
             }
             
-            if (geyserData.motd1) {
-                geyserInfo['MOTD Line 1'] = geyserData.motd1;
+            if (cachedGeyserData.motd1) {
+                geyserInfo['MOTD Line 1'] = cachedGeyserData.motd1;
             }
             
-            if (geyserData.motd2) {
-                geyserInfo['MOTD Line 2'] = geyserData.motd2;
+            if (cachedGeyserData.motd2) {
+                geyserInfo['MOTD Line 2'] = cachedGeyserData.motd2;
             }
             
             const geyserCard = createInfoCard('GeyserMC (Bedrock Support)', geyserInfo);
@@ -1976,6 +1991,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// Initialize
-connectWebSocket();
-loadPage('status');
+// Initialize - wait for WebSocket to be ready before loading page
+(async function init() {
+    console.log('Initializing application...');
+    await connectWebSocket();
+    console.log('WebSocket ready, loading initial page');
+    loadPage('status');
+})();
