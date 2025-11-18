@@ -1775,3 +1775,583 @@ document.addEventListener('DOMContentLoaded', () => {
 // Initialize
 loadPage('status');
 startOfflineCheck();
+
+// ===== FILE MANAGER =====
+
+let currentPath = '/';
+let currentFiles = [];
+let sortColumn = 'name';
+let sortDirection = 'asc';
+
+// File Manager: Load files in directory
+async function loadFileManager(path = '/') {
+    currentPath = path;
+    const loading = document.getElementById('fm-loading');
+    const table = document.getElementById('fm-table');
+    const empty = document.getElementById('fm-empty');
+    
+    loading.style.display = 'block';
+    table.style.display = 'none';
+    empty.style.display = 'none';
+    
+    try {
+        const response = await fetch(`/api/filemanager/browse?path=${encodeURIComponent(path)}`);
+        if (!response.ok) {
+            throw new Error('Failed to load directory');
+        }
+        
+        const data = await response.json();
+        currentFiles = data.files || [];
+        
+        updateBreadcrumb(path);
+        renderFileList();
+    } catch (error) {
+        console.error('Error loading directory:', error);
+        await customAlert('Failed to load directory: ' + error.message);
+        loading.style.display = 'none';
+    }
+}
+
+// Update breadcrumb navigation
+function updateBreadcrumb(path) {
+    const breadcrumb = document.getElementById('fm-breadcrumb');
+    breadcrumb.innerHTML = '';
+    
+    const parts = path.split('/').filter(p => p);
+    let currentPath = '/';
+    
+    // Root
+    const rootSpan = document.createElement('span');
+    rootSpan.className = 'fm-breadcrumb-item';
+    rootSpan.textContent = 'Root';
+    rootSpan.dataset.path = '/';
+    rootSpan.addEventListener('click', () => loadFileManager('/'));
+    breadcrumb.appendChild(rootSpan);
+    
+    // Path parts
+    parts.forEach((part, index) => {
+        currentPath += (currentPath === '/' ? '' : '/') + part;
+        const span = document.createElement('span');
+        span.className = 'fm-breadcrumb-item';
+        span.textContent = part;
+        span.dataset.path = currentPath;
+        const pathToLoad = currentPath; // Capture current path
+        span.addEventListener('click', () => loadFileManager(pathToLoad));
+        breadcrumb.appendChild(span);
+    });
+}
+
+// Render file list
+function renderFileList() {
+    const loading = document.getElementById('fm-loading');
+    const table = document.getElementById('fm-table');
+    const empty = document.getElementById('fm-empty');
+    const tbody = document.getElementById('fm-list');
+    
+    loading.style.display = 'none';
+    
+    // Apply search filter
+    const searchTerm = document.getElementById('fm-search').value.toLowerCase();
+    let filteredFiles = currentFiles.filter(file => 
+        file.name.toLowerCase().includes(searchTerm)
+    );
+    
+    // Apply sorting
+    filteredFiles.sort((a, b) => {
+        let aVal, bVal;
+        
+        // Folders first
+        if (a.is_directory !== b.is_directory) {
+            return a.is_directory ? -1 : 1;
+        }
+        
+        if (sortColumn === 'name') {
+            aVal = a.name.toLowerCase();
+            bVal = b.name.toLowerCase();
+        } else if (sortColumn === 'size') {
+            aVal = a.size || 0;
+            bVal = b.size || 0;
+        } else if (sortColumn === 'modified') {
+            aVal = a.modified || 0;
+            bVal = b.modified || 0;
+        }
+        
+        if (sortDirection === 'asc') {
+            return aVal > bVal ? 1 : -1;
+        } else {
+            return aVal < bVal ? 1 : -1;
+        }
+    });
+    
+    if (filteredFiles.length === 0) {
+        table.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+    }
+    
+    table.style.display = 'table';
+    empty.style.display = 'none';
+    
+    tbody.innerHTML = '';
+    
+    filteredFiles.forEach(file => {
+        const tr = document.createElement('tr');
+        if (file.is_directory) {
+            tr.classList.add('fm-row-folder');
+        }
+        tr.dataset.path = file.path;
+        tr.dataset.isDirectory = file.is_directory;
+        tr.dataset.name = file.name;
+        
+        // Icon
+        const iconTd = document.createElement('td');
+        iconTd.className = 'fm-icon';
+        iconTd.textContent = file.is_directory ? '📁' : getFileIcon(file.name);
+        tr.appendChild(iconTd);
+        
+        // Name
+        const nameTd = document.createElement('td');
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'fm-name';
+        const nameText = document.createElement('span');
+        nameText.className = 'fm-name-text';
+        nameText.textContent = file.name;
+        nameDiv.appendChild(nameText);
+        nameTd.appendChild(nameDiv);
+        tr.appendChild(nameTd);
+        
+        // Size
+        const sizeTd = document.createElement('td');
+        sizeTd.textContent = file.is_directory ? '-' : formatFileSize(file.size);
+        tr.appendChild(sizeTd);
+        
+        // Modified
+        const modifiedTd = document.createElement('td');
+        modifiedTd.textContent = file.modified ? new Date(file.modified * 1000).toLocaleString() : '-';
+        tr.appendChild(modifiedTd);
+        
+        // Actions
+        const actionsTd = document.createElement('td');
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'fm-actions';
+        
+        if (file.is_directory) {
+            const openBtn = document.createElement('button');
+            openBtn.className = 'fm-action-btn';
+            openBtn.textContent = 'Open';
+            openBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                loadFileManager(file.path);
+            });
+            actionsDiv.appendChild(openBtn);
+        } else {
+            // Edit button for text files
+            if (isEditableFile(file.name)) {
+                const editBtn = document.createElement('button');
+                editBtn.className = 'fm-action-btn';
+                editBtn.textContent = 'Edit';
+                editBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openFileEditor(file.path, file.name);
+                });
+                actionsDiv.appendChild(editBtn);
+            }
+        }
+        
+        const renameBtn = document.createElement('button');
+        renameBtn.className = 'fm-action-btn';
+        renameBtn.textContent = 'Rename';
+        renameBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            renameFile(file.path, file.name);
+        });
+        actionsDiv.appendChild(renameBtn);
+        
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'fm-action-btn danger';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteFile(file.path, file.name, file.is_directory);
+        });
+        actionsDiv.appendChild(deleteBtn);
+        
+        actionsTd.appendChild(actionsDiv);
+        tr.appendChild(actionsTd);
+        
+        // Double-click to open
+        if (file.is_directory) {
+            tr.addEventListener('dblclick', () => loadFileManager(file.path));
+        } else if (isEditableFile(file.name)) {
+            tr.addEventListener('dblclick', () => openFileEditor(file.path, file.name));
+        }
+        
+        // Right-click context menu
+        tr.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            showContextMenu(e, file);
+        });
+        
+        tbody.appendChild(tr);
+    });
+}
+
+// Get file icon based on extension
+function getFileIcon(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    const icons = {
+        'jar': '📦',
+        'yml': '📝',
+        'yaml': '📝',
+        'json': '📋',
+        'properties': '⚙️',
+        'txt': '📄',
+        'log': '📜',
+        'conf': '⚙️',
+        'config': '⚙️',
+        'sh': '🔧',
+        'bat': '🔧',
+        'md': '📖',
+        'png': '🖼️',
+        'jpg': '🖼️',
+        'jpeg': '🖼️',
+        'gif': '🖼️',
+        'zip': '📦',
+        'gz': '📦',
+        'tar': '📦'
+    };
+    return icons[ext] || '📄';
+}
+
+// Check if file is editable
+function isEditableFile(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    const editableExts = ['txt', 'yml', 'yaml', 'json', 'properties', 'conf', 'config', 'log', 'md', 'sh', 'bat'];
+    return editableExts.includes(ext);
+}
+
+// Format file size
+function formatFileSize(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+}
+
+// Create folder
+async function createFolder() {
+    const folderName = await customPrompt('Enter folder name:', 'new-folder');
+    if (!folderName) return;
+    
+    const newPath = currentPath === '/' ? `/${folderName}` : `${currentPath}/${folderName}`;
+    
+    try {
+        const response = await fetch('/api/filemanager/folder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: newPath })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to create folder');
+        }
+        
+        await customAlert('Folder created successfully');
+        loadFileManager(currentPath);
+    } catch (error) {
+        console.error('Error creating folder:', error);
+        await customAlert('Failed to create folder: ' + error.message);
+    }
+}
+
+// Upload file
+async function uploadFiles(files) {
+    const progressDiv = document.getElementById('fm-upload-progress');
+    const progressFill = document.getElementById('fm-upload-progress-fill');
+    const progressText = document.getElementById('fm-upload-progress-text');
+    
+    progressDiv.style.display = 'block';
+    
+    let completed = 0;
+    const total = files.length;
+    
+    for (const file of files) {
+        try {
+            const formData = new FormData();
+            formData.append('path', currentPath);
+            formData.append('file', file);
+            
+            progressText.textContent = `Uploading ${file.name}... (${completed + 1}/${total})`;
+            
+            const response = await fetch('/api/filemanager/upload', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to upload');
+            }
+            
+            completed++;
+            const percent = (completed / total) * 100;
+            progressFill.style.width = `${percent}%`;
+        } catch (error) {
+            console.error(`Error uploading ${file.name}:`, error);
+            await customAlert(`Failed to upload ${file.name}: ${error.message}`);
+        }
+    }
+    
+    progressText.textContent = 'Upload complete!';
+    setTimeout(() => {
+        progressDiv.style.display = 'none';
+        progressFill.style.width = '0%';
+    }, 2000);
+    
+    loadFileManager(currentPath);
+}
+
+// Rename file
+async function renameFile(filePath, currentName) {
+    const newName = await customPrompt('Enter new name:', currentName);
+    if (!newName || newName === currentName) return;
+    
+    const directory = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
+    const newPath = directory === '/' ? `/${newName}` : `${directory}/${newName}`;
+    
+    try {
+        const response = await fetch('/api/filemanager/rename', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ old_path: filePath, new_path: newPath })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to rename');
+        }
+        
+        await customAlert('Renamed successfully');
+        loadFileManager(currentPath);
+    } catch (error) {
+        console.error('Error renaming:', error);
+        await customAlert('Failed to rename: ' + error.message);
+    }
+}
+
+// Delete file
+async function deleteFile(filePath, fileName, isDirectory) {
+    const type = isDirectory ? 'folder' : 'file';
+    const confirmed = await customConfirm(`Are you sure you want to delete this ${type}: ${fileName}?`);
+    if (!confirmed) return;
+    
+    try {
+        const response = await fetch(`/api/filemanager/delete?path=${encodeURIComponent(filePath)}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to delete');
+        }
+        
+        await customAlert(`${type.charAt(0).toUpperCase() + type.slice(1)} deleted successfully`);
+        loadFileManager(currentPath);
+    } catch (error) {
+        console.error('Error deleting:', error);
+        await customAlert('Failed to delete: ' + error.message);
+    }
+}
+
+// Open file editor
+async function openFileEditor(filePath, fileName) {
+    const modal = document.getElementById('fm-editor-modal');
+    const title = document.getElementById('fm-editor-title');
+    const textarea = document.getElementById('fm-editor-textarea');
+    const saveBtn = document.getElementById('fm-editor-save');
+    const cancelBtn = document.getElementById('fm-editor-cancel');
+    const closeBtn = document.getElementById('fm-editor-close');
+    
+    title.textContent = `Edit: ${fileName}`;
+    textarea.value = 'Loading...';
+    modal.style.display = 'flex';
+    
+    try {
+        // TODO: Implement file content loading when backend supports it
+        // For now, show placeholder
+        textarea.value = '// TODO: Load file content from server\n// Backend download endpoint needs to be implemented';
+        
+        // Save handler
+        const saveHandler = async () => {
+            try {
+                const content = textarea.value;
+                const response = await fetch('/api/filemanager/edit', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: filePath, content })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to save');
+                }
+                
+                await customAlert('File saved successfully');
+                modal.style.display = 'none';
+                loadFileManager(currentPath);
+            } catch (error) {
+                console.error('Error saving file:', error);
+                await customAlert('Failed to save file: ' + error.message);
+            }
+        };
+        
+        // Cancel handler
+        const cancelHandler = () => {
+            modal.style.display = 'none';
+        };
+        
+        saveBtn.onclick = saveHandler;
+        cancelBtn.onclick = cancelHandler;
+        closeBtn.onclick = cancelHandler;
+    } catch (error) {
+        console.error('Error loading file:', error);
+        await customAlert('Failed to load file: ' + error.message);
+        modal.style.display = 'none';
+    }
+}
+
+// Context menu
+function showContextMenu(event, file) {
+    const menu = document.getElementById('fm-context-menu');
+    
+    // Position menu
+    menu.style.left = `${event.pageX}px`;
+    menu.style.top = `${event.pageY}px`;
+    menu.style.display = 'block';
+    
+    // Clear old handlers
+    const items = menu.querySelectorAll('.fm-context-menu-item');
+    items.forEach(item => {
+        const newItem = item.cloneNode(true);
+        item.parentNode.replaceChild(newItem, item);
+    });
+    
+    // Add new handlers
+    const newItems = menu.querySelectorAll('.fm-context-menu-item');
+    newItems.forEach(item => {
+        item.addEventListener('click', async () => {
+            menu.style.display = 'none';
+            const action = item.dataset.action;
+            
+            if (action === 'rename') {
+                await renameFile(file.path, file.name);
+            } else if (action === 'delete') {
+                await deleteFile(file.path, file.name, file.is_directory);
+            } else if (action === 'edit' && !file.is_directory && isEditableFile(file.name)) {
+                await openFileEditor(file.path, file.name);
+            }
+        });
+    });
+    
+    // Hide menu on outside click
+    const hideMenu = () => {
+        menu.style.display = 'none';
+        document.removeEventListener('click', hideMenu);
+    };
+    setTimeout(() => document.addEventListener('click', hideMenu), 10);
+}
+
+// Sorting
+function setupSorting() {
+    document.querySelectorAll('.fm-table th.sortable').forEach(th => {
+        th.addEventListener('click', () => {
+            const column = th.dataset.sort;
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+            
+            // Update indicators
+            document.querySelectorAll('.fm-table th').forEach(h => h.classList.remove('sorted'));
+            th.classList.add('sorted');
+            document.querySelectorAll('.sort-indicator').forEach(ind => ind.textContent = '');
+            th.querySelector('.sort-indicator').textContent = sortDirection === 'asc' ? '▼' : '▲';
+            
+            renderFileList();
+        });
+    });
+}
+
+// File Manager event listeners
+document.addEventListener('DOMContentLoaded', () => {
+    // Create folder button
+    const createFolderBtn = document.getElementById('fm-create-folder-btn');
+    if (createFolderBtn) {
+        createFolderBtn.addEventListener('click', createFolder);
+    }
+    
+    // Upload button
+    const uploadBtn = document.getElementById('fm-upload-btn');
+    const uploadInput = document.getElementById('fm-upload-input');
+    if (uploadBtn && uploadInput) {
+        uploadBtn.addEventListener('click', () => uploadInput.click());
+        uploadInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                uploadFiles(Array.from(e.target.files));
+                e.target.value = ''; // Reset input
+            }
+        });
+    }
+    
+    // Search
+    const searchInput = document.getElementById('fm-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', () => renderFileList());
+    }
+    
+    // Drag and drop
+    const fmContainer = document.getElementById('fm-container');
+    const dropZone = document.getElementById('fm-drop-zone');
+    
+    if (fmContainer && dropZone) {
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            fmContainer.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+        });
+        
+        fmContainer.addEventListener('dragenter', () => {
+            dropZone.style.display = 'flex';
+        });
+        
+        dropZone.addEventListener('dragleave', (e) => {
+            if (e.target === dropZone) {
+                dropZone.style.display = 'none';
+            }
+        });
+        
+        dropZone.addEventListener('drop', (e) => {
+            dropZone.style.display = 'none';
+            const files = Array.from(e.dataTransfer.files);
+            if (files.length > 0) {
+                uploadFiles(files);
+            }
+        });
+    }
+    
+    setupSorting();
+});
+
+// Load file manager when page is shown
+const originalLoadPage = loadPage;
+loadPage = function(pageName) {
+    originalLoadPage(pageName);
+    if (pageName === 'file-manager') {
+        loadFileManager(currentPath);
+    }
+};

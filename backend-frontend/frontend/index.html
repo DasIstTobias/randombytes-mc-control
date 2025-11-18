@@ -31,6 +31,7 @@
                 <li><a href="#" class="nav-link" data-page="console">Console</a></li>
                 <li><a href="#" class="nav-link" data-page="chat">Chat</a></li>
                 <li><a href="#" class="nav-link" data-page="settings">Server Settings</a></li>
+                <li><a href="#" class="nav-link" data-page="file-manager">File Manager</a></li>
                 
                 <li class="nav-section-title"># MODS</li>
                 <li><a href="#" class="nav-link" data-page="custom-recipes">Custom Recipes</a></li>
@@ -339,7 +340,96 @@
                     </table>
                 </div>
             </div>
+
+            <!-- File Manager Page -->
+            <div id="file-manager-page" class="page">
+                <h2>File Manager</h2>
+                <p class="subtitle">Browse and manage server files securely</p>
+                
+                <!-- Breadcrumb Navigation -->
+                <div class="fm-breadcrumb" id="fm-breadcrumb">
+                    <span class="fm-breadcrumb-item" data-path="/">Root</span>
+                </div>
+                
+                <!-- File Manager Toolbar -->
+                <div class="fm-toolbar">
+                    <button id="fm-create-folder-btn" class="fm-btn">
+                        <span>📁</span> Create Folder
+                    </button>
+                    <button id="fm-upload-btn" class="fm-btn">
+                        <span>⬆️</span> Upload File
+                    </button>
+                    <input type="file" id="fm-upload-input" style="display: none;" multiple>
+                    <div class="fm-search-container">
+                        <input type="text" id="fm-search" placeholder="Search files..." autocomplete="off">
+                    </div>
+                </div>
+                
+                <!-- Upload Progress -->
+                <div id="fm-upload-progress" class="fm-upload-progress" style="display: none;">
+                    <div class="fm-upload-progress-bar">
+                        <div id="fm-upload-progress-fill" class="fm-upload-progress-fill"></div>
+                    </div>
+                    <div id="fm-upload-progress-text" class="fm-upload-progress-text">Uploading...</div>
+                </div>
+                
+                <!-- File List -->
+                <div class="fm-container" id="fm-container">
+                    <div class="fm-loading" id="fm-loading">Loading...</div>
+                    <table class="fm-table" id="fm-table" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th class="fm-col-icon"></th>
+                                <th class="fm-col-name sortable" data-sort="name">
+                                    Name <span class="sort-indicator">▼</span>
+                                </th>
+                                <th class="fm-col-size sortable" data-sort="size">
+                                    Size <span class="sort-indicator"></span>
+                                </th>
+                                <th class="fm-col-modified sortable" data-sort="modified">
+                                    Modified <span class="sort-indicator"></span>
+                                </th>
+                                <th class="fm-col-actions">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fm-list"></tbody>
+                    </table>
+                    <div id="fm-empty" class="fm-empty" style="display: none;">
+                        No files in this directory
+                    </div>
+                </div>
+                
+                <!-- Drop Zone Overlay -->
+                <div id="fm-drop-zone" class="fm-drop-zone" style="display: none;">
+                    <div class="fm-drop-zone-content">
+                        <div class="fm-drop-zone-icon">📁</div>
+                        <div class="fm-drop-zone-text">Drop files here to upload</div>
+                    </div>
+                </div>
+            </div>
         </main>
+    </div>
+
+    <!-- File Editor Modal -->
+    <div id="fm-editor-modal" class="modal" style="display: none;">
+        <div class="modal-content fm-editor-modal-content">
+            <span class="close" id="fm-editor-close">&times;</span>
+            <h2 id="fm-editor-title">Edit File</h2>
+            <div class="fm-editor-container">
+                <textarea id="fm-editor-textarea" class="fm-editor-textarea"></textarea>
+            </div>
+            <div class="fm-editor-actions">
+                <button id="fm-editor-save" class="fm-btn primary">Save</button>
+                <button id="fm-editor-cancel" class="fm-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div id="fm-context-menu" class="fm-context-menu" style="display: none;">
+        <div class="fm-context-menu-item" data-action="rename">Rename</div>
+        <div class="fm-context-menu-item" data-action="delete">Delete</div>
+        <div class="fm-context-menu-item" data-action="edit">Edit</div>
     </div>
 
     <!-- Player Detail Modal -->
