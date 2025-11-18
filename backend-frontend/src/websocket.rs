@@ -84,6 +84,12 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
         get_initial_players(&state).await,
         get_initial_server_info(&state).await,
         get_initial_plugins(&state).await,
+        get_initial_console(&state).await,
+        get_initial_chat(&state).await,
+        get_initial_logs(&state).await,
+        get_initial_whitelist(&state).await,
+        get_initial_blacklist(&state).await,
+        get_initial_ops(&state).await,
     ];
 
     for msg in initial_messages {
@@ -182,6 +188,72 @@ async fn get_initial_plugins(state: &AppState) -> Option<WsMessage> {
         Ok(data) => Some(WsMessage::Plugins { data }),
         Err(e) => {
             error!("Failed to get initial plugins: {}", e);
+            None
+        }
+    }
+}
+
+async fn get_initial_console(state: &AppState) -> Option<WsMessage> {
+    let client = state.plugin_client.read().await;
+    match client.get_console().await {
+        Ok(data) => Some(WsMessage::Console { data }),
+        Err(e) => {
+            error!("Failed to get initial console: {}", e);
+            None
+        }
+    }
+}
+
+async fn get_initial_chat(state: &AppState) -> Option<WsMessage> {
+    let client = state.plugin_client.read().await;
+    match client.get_chat().await {
+        Ok(data) => Some(WsMessage::Chat { data }),
+        Err(e) => {
+            error!("Failed to get initial chat: {}", e);
+            None
+        }
+    }
+}
+
+async fn get_initial_logs(state: &AppState) -> Option<WsMessage> {
+    let client = state.plugin_client.read().await;
+    match client.get_logs().await {
+        Ok(data) => Some(WsMessage::Logs { data }),
+        Err(e) => {
+            error!("Failed to get initial logs: {}", e);
+            None
+        }
+    }
+}
+
+async fn get_initial_whitelist(state: &AppState) -> Option<WsMessage> {
+    let client = state.plugin_client.read().await;
+    match client.get_whitelist().await {
+        Ok(data) => Some(WsMessage::Whitelist { data }),
+        Err(e) => {
+            error!("Failed to get initial whitelist: {}", e);
+            None
+        }
+    }
+}
+
+async fn get_initial_blacklist(state: &AppState) -> Option<WsMessage> {
+    let client = state.plugin_client.read().await;
+    match client.get_blacklist().await {
+        Ok(data) => Some(WsMessage::Blacklist { data }),
+        Err(e) => {
+            error!("Failed to get initial blacklist: {}", e);
+            None
+        }
+    }
+}
+
+async fn get_initial_ops(state: &AppState) -> Option<WsMessage> {
+    let client = state.plugin_client.read().await;
+    match client.get_ops().await {
+        Ok(data) => Some(WsMessage::Ops { data }),
+        Err(e) => {
+            error!("Failed to get initial ops: {}", e);
             None
         }
     }

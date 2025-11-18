@@ -174,8 +174,18 @@ function connectWebSocket() {
                 const message = JSON.parse(event.data);
                 handleWebSocketMessage(message);
                 
-                // After receiving first batch of initial data, resolve the ready promise
-                if (wsReadyResolve && wsDataCache.server_info && wsDataCache.metrics) {
+                // After receiving essential initial data, resolve the ready promise
+                // Check for core data types that most pages need
+                if (wsReadyResolve && 
+                    wsDataCache.server_info && 
+                    wsDataCache.metrics && 
+                    wsDataCache.players &&
+                    wsDataCache.whitelist &&
+                    wsDataCache.blacklist &&
+                    wsDataCache.ops &&
+                    wsDataCache.logs &&
+                    wsDataCache.console &&
+                    wsDataCache.chat) {
                     console.log('WebSocket initial data received, ready to render UI');
                     wsReadyResolve();
                     wsReadyResolve = null;
