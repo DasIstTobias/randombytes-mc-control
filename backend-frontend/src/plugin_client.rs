@@ -272,4 +272,90 @@ impl PluginClient {
     pub async fn get_logs(&self) -> Result<Value, Box<dyn Error>> {
         self.get("/logs").await
     }
+
+    // File manager methods
+    pub async fn browse_files(&self, path: &str) -> Result<Value, Box<dyn Error>> {
+        self.get(&format!("/filemanager/browse?path={}", urlencoding::encode(path))).await
+    }
+
+    // TODO: Implement download_file with proper binary streaming
+
+    pub async fn upload_file(&self, path: &str, filename: &str, content: Vec<u8>) -> Result<Value, Box<dyn Error>> {
+        use reqwest::multipart;
+        
+        let form = multipart::Form::new()
+            .text("path", path.to_string())
+            .part("file", multipart::Part::bytes(content).file_name(filename.to_string()));
+
+        let url = format!("{}/filemanager/upload", self.base_url);
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .multipart(form)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(format!("Request failed: {}", response.status()).into());
+        }
+
+        Ok(response.json().await?)
+    }
+
+    pub async fn create_folder(&self, path: &str) -> Result<Value, Box<dyn Error>> {
+        let body = serde_json::json!({
+            "path": path
+        });
+        self.post("/filemanager/folder", body).await
+    }
+
+    pub async fn delete_file(&self, path: &str) -> Result<Value, Box<dyn Error>> {
+        let endpoint = format!("/filemanager/delete?path={}", urlencoding::encode(path));
+        self.delete(&endpoint).await
+    }
+
+    pub async fn rename_file(&self, old_path: &str, new_path: &str) -> Result<Value, Box<dyn Error>> {
+        let body = serde_json::json!({
+            "old_path": old_path,
+            "new_path": new_path
+        });
+        
+        let url = format!("{}/filemanager/rename", self.base_url);
+        let response = self
+            .client
+            .put(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&body)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(format!("Request failed: {}", response.status()).into());
+        }
+
+        Ok(response.json().await?)
+    }
+
+    pub async fn edit_file(&self, path: &str, content: &str) -> Result<Value, Box<dyn Error>> {
+        let body = serde_json::json!({
+            "path": path,
+            "content": content
+        });
+        
+        let url = format!("{}/filemanager/edit", self.base_url);
+        let response = self
+            .client
+            .put(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&body)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(format!("Request failed: {}", response.status()).into());
+        }
+
+        Ok(response.json().await?)
+    }
 }

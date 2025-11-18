@@ -107,6 +107,14 @@ async fn main() {
         .route("/api/recipe/:id", axum::routing::delete(delete_recipe))
         // Logs endpoint
         .route("/api/logs", get(get_logs))
+        // File manager endpoints
+        .route("/api/filemanager/browse", get(browse_files))
+        // TODO: Implement download endpoint separately
+        .route("/api/filemanager/upload", post(upload_file))
+        .route("/api/filemanager/folder", post(create_folder))
+        .route("/api/filemanager/delete", axum::routing::delete(delete_file))
+        .route("/api/filemanager/rename", axum::routing::put(rename_file))
+        .route("/api/filemanager/edit", axum::routing::put(edit_file))
         // Serve frontend
         .nest_service("/", ServeDir::new("frontend"))
         .with_state(state.clone());
@@ -683,6 +691,152 @@ async fn get_logs(State(state): State<AppState>) -> Result<Json<serde_json::Valu
         Ok(logs) => Ok(Json(logs)),
         Err(e) => {
             error!("Failed to get logs: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+// File manager handlers
+
+#[derive(Deserialize)]
+struct BrowseQuery {
+    path: String,
+}
+
+async fn browse_files(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<BrowseQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.browse_files(&query.path).await {
+        Ok(files) => Ok(Json(files)),
+        Err(e) => {
+            error!("Failed to browse files: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+// TODO: Implement download_file handler - needs special handling for binary responses
+
+async fn upload_file(
+    State(state): State<AppState>,
+    mut multipart: axum::extract::Multipart,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut path = String::new();
+    let mut filename = String::new();
+    let mut content = Vec::new();
+    
+    // Process multipart form data
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        error!("Failed to read multipart field: {}", e);
+        ApiError::PluginError("Invalid multipart data".to_string())
+    })? {
+        let name = field.name().unwrap_or("").to_string();
+        
+        if name == "path" {
+            path = field.text().await.map_err(|e| {
+                error!("Failed to read path field: {}", e);
+                ApiError::PluginError("Invalid path field".to_string())
+            })?;
+        } else if name == "file" {
+            filename = field.file_name().unwrap_or("upload").to_string();
+            content = field.bytes().await.map_err(|e| {
+                error!("Failed to read file content: {}", e);
+                ApiError::PluginError("Invalid file content".to_string())
+            })?.to_vec();
+        }
+    }
+    
+    // Check file size (100MB limit)
+    const MAX_FILE_SIZE: usize = 100 * 1024 * 1024; // 100MB
+    if content.len() > MAX_FILE_SIZE {
+        return Err(ApiError::PluginError("File size exceeds 100MB limit".to_string()));
+    }
+    
+    let client = state.plugin_client.read().await;
+    match client.upload_file(&path, &filename, content).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to upload file: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct CreateFolder {
+    path: String,
+}
+
+async fn create_folder(
+    State(state): State<AppState>,
+    Json(payload): Json<CreateFolder>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.create_folder(&payload.path).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to create folder: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct DeleteQuery {
+    path: String,
+}
+
+async fn delete_file(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<DeleteQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.delete_file(&query.path).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to delete file: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct RenameFile {
+    old_path: String,
+    new_path: String,
+}
+
+async fn rename_file(
+    State(state): State<AppState>,
+    Json(payload): Json<RenameFile>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.rename_file(&payload.old_path, &payload.new_path).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to rename file: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct EditFile {
+    path: String,
+    content: String,
+}
+
+async fn edit_file(
+    State(state): State<AppState>,
+    Json(payload): Json<EditFile>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    match client.edit_file(&payload.path, &payload.content).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to edit file: {}", e);
             Err(ApiError::PluginError(e.to_string()))
         }
     }
