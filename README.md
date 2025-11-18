@@ -1,6 +1,6 @@
-# RandomBytes MC Control
+# <img src="backend-frontend/frontend/favicon.ico" alt="Timeline Logo" width="32" height="32" style="vertical-align: middle;"> RandomBytes MC Control
 
-A comprehensive, secure Minecraft server management solution consisting of three components:
+A secure Minecraft server management solution split into three components:
 
 1. **Plugin**: A PaperMC/Spigot plugin that provides a REST API for server control
 2. **Backend**: A Rust backend server that communicates with the plugin
