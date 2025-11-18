@@ -1277,6 +1277,15 @@ input[type="text"]:focus {
     font-size: 0.8rem;
 }
 
+.file-actions button.download-btn {
+    background-color: #44aaff;
+    color: white;
+}
+
+.file-actions button.download-btn:hover {
+    background-color: #5bbbff;
+}
+
 .file-drop-overlay {
     position: fixed;
     top: 0;
@@ -1300,8 +1309,8 @@ input[type="text"]:focus {
 
 /* File Editor Modal */
 .file-editor-content {
-    max-width: 900px;
-    width: 90vw;
+    max-width: 80vw;
+    width: 80vw;
     height: 80vh;
     display: flex;
     flex-direction: column;
@@ -1322,22 +1331,42 @@ input[type="text"]:focus {
 
 .file-editor-body {
     flex: 1;
-    padding: 1rem;
+    padding: 0;
     overflow: hidden;
+    display: flex;
+}
+
+.file-editor-container {
+    display: flex;
+    width: 100%;
+    height: 100%;
+}
+
+.file-editor-line-numbers {
+    background-color: #0d0d0d;
+    color: #666;
+    padding: 1rem 0.5rem;
+    text-align: right;
+    font-family: monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    border-right: 2px solid var(--border);
+    user-select: none;
+    overflow: hidden;
+    min-width: 50px;
 }
 
 .file-editor-textarea {
-    width: 100%;
-    height: 100%;
+    flex: 1;
     background-color: #1a1a1a;
     color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 4px;
+    border: none;
     padding: 1rem;
     font-family: monospace;
     font-size: 0.9rem;
     resize: none;
     line-height: 1.5;
+    outline: none;
 }
 
 .file-editor-footer {
@@ -1384,4 +1413,82 @@ input[type="text"]:focus {
 .file-context-menu ul li:last-child {
     border-bottom-left-radius: 4px;
     border-bottom-right-radius: 4px;
+}
+
+/* Image Viewer Modal */
+.image-viewer-content {
+    max-width: 90vw;
+    max-height: 90vh;
+    background-color: transparent;
+    box-shadow: none;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+}
+
+.image-viewer-content .close {
+    position: absolute;
+    top: -40px;
+    right: 0;
+    font-size: 2rem;
+    color: white;
+    background-color: rgba(0, 0, 0, 0.5);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.image-viewer-content img {
+    max-width: 100%;
+    max-height: 90vh;
+    object-fit: contain;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+}
+
+/* Change-Log Modal */
+.changelog-content {
+    max-width: 800px;
+    width: 80vw;
+    height: 70vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.changelog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.changelog-header h2 {
+    margin: 0;
+    font-size: 1.2rem;
+}
+
+.changelog-body {
+    flex: 1;
+    padding: 1rem;
+    overflow-y: auto;
+    background-color: #1a1a1a;
+}
+
+.changelog-output {
+    font-family: monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    color: var(--text);
+}
+
+.changelog-output .changelog-line {
+    padding: 0.25rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }

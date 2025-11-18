@@ -30,13 +30,8 @@ public class FileManager {
     public FileManager(MCControlPlugin plugin) {
         this.plugin = plugin;
         // The server root is the directory containing the server JAR (where PaperMC/Spigot is)
-        // Bukkit.getWorldContainer() returns the directory where worlds are stored, which is typically the server root
-        Path worldContainer = Bukkit.getWorldContainer().toPath().toAbsolutePath().normalize();
-        
-        // If worldContainer has a parent, use that (in case worlds are in a subdirectory)
-        // Otherwise, use worldContainer itself as the server root
-        Path parent = worldContainer.getParent();
-        this.serverRoot = (parent != null) ? parent : worldContainer;
+        // Bukkit.getWorldContainer() returns the directory where worlds are stored, which is the server root
+        this.serverRoot = Bukkit.getWorldContainer().toPath().toAbsolutePath().normalize();
         
         plugin.getLogger().info("File Manager initialised with root: " + serverRoot.toString());
     }

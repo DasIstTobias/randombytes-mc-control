@@ -343,7 +343,14 @@
 
             <!-- File Manager Page -->
             <div id="file-manager-page" class="page">
-                <h2>File Manager</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <div>
+                        <h2 style="margin-bottom: 0;">File Manager</h2>
+                    </div>
+                    <div>
+                        <button id="file-changelog-btn" class="file-action-btn">Change-Log</button>
+                    </div>
+                </div>
                 <p class="subtitle">Manage files on the Minecraft server</p>
                 
                 <!-- Breadcrumb navigation -->
@@ -359,6 +366,7 @@
                         <input type="file" id="file-upload-input" style="display: none;" multiple>
                     </div>
                     <div class="file-toolbar-right">
+                        <button id="file-refresh-btn" class="file-action-btn">Refresh</button>
                         <input type="text" id="file-search" placeholder="Search files..." autocomplete="off">
                         <select id="file-sort">
                             <option value="name">Sort by Name</option>
@@ -397,15 +405,20 @@
     <div id="file-editor-modal" class="modal">
         <div class="modal-content file-editor-content">
             <div class="file-editor-header">
-                <h2 id="file-editor-title">Edit File</h2>
-                <span class="close" id="file-editor-close">&times;</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <h2 id="file-editor-title" style="margin: 0;">Edit File</h2>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <button id="file-editor-save" class="primary">Save</button>
+                        <button id="file-editor-cancel">Cancel</button>
+                        <span class="close" id="file-editor-close">&times;</span>
+                    </div>
+                </div>
             </div>
             <div class="file-editor-body">
-                <textarea id="file-editor-textarea" class="file-editor-textarea"></textarea>
-            </div>
-            <div class="file-editor-footer">
-                <button id="file-editor-save" class="primary">Save</button>
-                <button id="file-editor-cancel">Cancel</button>
+                <div class="file-editor-container">
+                    <div class="file-editor-line-numbers" id="file-editor-line-numbers"></div>
+                    <textarea id="file-editor-textarea" class="file-editor-textarea"></textarea>
+                </div>
             </div>
         </div>
     </div>
@@ -425,11 +438,33 @@
     <!-- Context Menu -->
     <div id="file-context-menu" class="file-context-menu" style="display: none;">
         <ul>
-            <li id="context-download">Download</li>
             <li id="context-edit">Edit</li>
+            <li id="context-open-picture">Open Picture</li>
+            <li id="context-download">Download</li>
             <li id="context-rename">Rename</li>
             <li id="context-delete">Delete</li>
         </ul>
+    </div>
+
+    <!-- Image Viewer Modal -->
+    <div id="image-viewer-modal" class="modal">
+        <div class="modal-content image-viewer-content">
+            <span class="close" id="image-viewer-close">&times;</span>
+            <img id="image-viewer-img" src="" alt="Image">
+        </div>
+    </div>
+
+    <!-- Change-Log Modal -->
+    <div id="changelog-modal" class="modal">
+        <div class="modal-content changelog-content">
+            <div class="changelog-header">
+                <h2>File Manager Change-Log</h2>
+                <span class="close" id="changelog-close">&times;</span>
+            </div>
+            <div class="changelog-body">
+                <div class="changelog-output" id="changelog-output"></div>
+            </div>
+        </div>
     </div>
 
     <!-- Player Detail Modal -->

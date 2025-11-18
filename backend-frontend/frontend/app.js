@@ -1781,6 +1781,23 @@ let currentFiles = [];
 let currentSortBy = 'name';
 let currentFileSearch = '';
 let contextMenuTarget = null;
+let fileChangeLog = []; // Track all file operations
+
+function addToChangeLog(action) {
+    const now = new Date();
+    const timestamp = now.toLocaleString('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    fileChangeLog.unshift(`[${timestamp}] ${action}`);
+    // Keep only last 500 entries
+    if (fileChangeLog.length > 500) {
+        fileChangeLog = fileChangeLog.slice(0, 500);
+    }
+}
 
 async function loadFileManager() {
     try {
@@ -1913,14 +1930,10 @@ function renderFiles() {
         actionsDiv.className = 'file-actions';
         
         if (!file.isDirectory) {
-            const downloadBtn = document.createElement('button');
-            downloadBtn.textContent = 'Download';
-            downloadBtn.onclick = (e) => {
-                e.stopPropagation();
-                downloadFile(file.path);
-            };
-            actionsDiv.appendChild(downloadBtn);
+            // Check if it's an image file
+            const isImage = /\.(webp|jpg|jpeg|png)$/i.test(file.name);
             
+            // 1. Edit button (for editable files)
             if (file.editable) {
                 const editBtn = document.createElement('button');
                 editBtn.textContent = 'Edit';
@@ -1930,8 +1943,30 @@ function renderFiles() {
                 };
                 actionsDiv.appendChild(editBtn);
             }
+            
+            // 2. Open Picture button (for image files)
+            if (isImage) {
+                const openPictureBtn = document.createElement('button');
+                openPictureBtn.textContent = 'Open Picture';
+                openPictureBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    openImageViewer(file.path);
+                };
+                actionsDiv.appendChild(openPictureBtn);
+            }
+            
+            // 3. Download button
+            const downloadBtn = document.createElement('button');
+            downloadBtn.className = 'download-btn';
+            downloadBtn.textContent = 'Download';
+            downloadBtn.onclick = (e) => {
+                e.stopPropagation();
+                downloadFile(file.path);
+            };
+            actionsDiv.appendChild(downloadBtn);
         }
         
+        // 4. Delete button (for both files and directories)
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'danger';
         deleteBtn.textContent = 'Delete';
@@ -1948,10 +1983,18 @@ function renderFiles() {
         row.appendChild(modifiedCell);
         row.appendChild(actionsCell);
         
-        // Double-click to navigate into folders
+        // Double-click handler
         row.addEventListener('dblclick', () => {
             if (file.isDirectory) {
                 loadFiles(file.path);
+            } else {
+                // Check if it's an image
+                const isImage = /\.(webp|jpg|jpeg|png)$/i.test(file.name);
+                if (isImage) {
+                    openImageViewer(file.path);
+                } else if (file.editable) {
+                    openFileEditor(file.path, file.name);
+                }
             }
         });
         
@@ -2026,15 +2069,44 @@ async function openFileEditor(path, name) {
         }
         
         document.getElementById('file-editor-title').textContent = `Edit: ${name}`;
-        document.getElementById('file-editor-textarea').value = data.content || '';
+        const textarea = document.getElementById('file-editor-textarea');
+        textarea.value = data.content || '';
         document.getElementById('file-editor-modal').classList.add('active');
         
         // Store path for saving
-        document.getElementById('file-editor-textarea').dataset.path = path;
+        textarea.dataset.path = path;
+        
+        // Update line numbers
+        updateLineNumbers();
+        
+        // Update line numbers on scroll and input
+        textarea.addEventListener('scroll', syncScroll);
+        textarea.addEventListener('input', updateLineNumbers);
     } catch (error) {
         console.error('Error loading file for editing:', error);
         await customAlert('Failed to load file');
     }
+}
+
+function updateLineNumbers() {
+    const textarea = document.getElementById('file-editor-textarea');
+    const lineNumbers = document.getElementById('file-editor-line-numbers');
+    const lines = textarea.value.split('\n').length;
+    
+    let html = '';
+    for (let i = 1; i <= lines; i++) {
+        html += i + '\n';
+    }
+    lineNumbers.textContent = html;
+    
+    // Sync scroll position
+    syncScroll();
+}
+
+function syncScroll() {
+    const textarea = document.getElementById('file-editor-textarea');
+    const lineNumbers = document.getElementById('file-editor-line-numbers');
+    lineNumbers.scrollTop = textarea.scrollTop;
 }
 
 async function saveFileFromEditor() {
@@ -2053,6 +2125,7 @@ async function saveFileFromEditor() {
             return;
         }
         
+        addToChangeLog(`Edit /${path}`);
         await customAlert('File saved successfully');
         document.getElementById('file-editor-modal').classList.remove('active');
         await loadFiles(currentPath);
@@ -2064,9 +2137,23 @@ async function saveFileFromEditor() {
 
 async function deleteFileOrFolder(path, name, isDirectory) {
     const type = isDirectory ? 'folder' : 'file';
-    const confirmed = await customConfirm(`Are you sure you want to delete this ${type}? ${name}`);
     
-    if (!confirmed) return;
+    if (isDirectory) {
+        // For directories, require typing the folder name
+        const confirmName = await customPrompt(`To delete this folder, please type its name to confirm: "${name}"`, '');
+        
+        if (confirmName !== name) {
+            if (confirmName !== null) {
+                await customAlert('Folder name did not match. Deletion cancelled.');
+            }
+            return;
+        }
+    } else {
+        // For files, simple confirmation
+        const confirmed = await customConfirm(`Are you sure you want to delete this ${type}? ${name}`);
+        
+        if (!confirmed) return;
+    }
     
     try {
         const data = await API.delete(`/files?path=${encodeURIComponent(path)}`);
@@ -2076,6 +2163,7 @@ async function deleteFileOrFolder(path, name, isDirectory) {
             return;
         }
         
+        addToChangeLog(`Delete /${path}`);
         await loadFiles(currentPath);
     } catch (error) {
         console.error('Error deleting ' + type + ':', error);
@@ -2099,6 +2187,7 @@ async function renameFileOrFolder(path, oldName) {
             return;
         }
         
+        addToChangeLog(`Rename /${path} to ${newName}`);
         await loadFiles(currentPath);
     } catch (error) {
         console.error('Error renaming:', error);
@@ -2123,6 +2212,7 @@ async function createFolder() {
             return;
         }
         
+        addToChangeLog(`Create folder /${folderPath}`);
         await loadFiles(currentPath);
     } catch (error) {
         console.error('Error creating folder:', error);
@@ -2147,6 +2237,8 @@ async function uploadFiles(files) {
                     
                     if (data.error) {
                         await customAlert(`Error uploading ${file.name}: ${data.error}`);
+                    } else {
+                        addToChangeLog(`Upload /${filePath}`);
                     }
                 } catch (error) {
                     console.error('Error uploading file:', error);
@@ -2164,12 +2256,39 @@ async function uploadFiles(files) {
     setTimeout(() => loadFiles(currentPath), 1000);
 }
 
+function openImageViewer(path) {
+    const img = document.getElementById('image-viewer-img');
+    img.src = `/api/files/download?path=${encodeURIComponent(path)}`;
+    document.getElementById('image-viewer-modal').classList.add('active');
+    addToChangeLog(`View image /${path}`);
+}
+
+function showChangeLog() {
+    const output = document.getElementById('changelog-output');
+    output.innerHTML = '';
+    
+    if (fileChangeLog.length === 0) {
+        output.innerHTML = '<div class="changelog-line">No actions recorded yet</div>';
+    } else {
+        fileChangeLog.forEach(entry => {
+            const lineDiv = document.createElement('div');
+            lineDiv.className = 'changelog-line';
+            lineDiv.textContent = entry;
+            output.appendChild(lineDiv);
+        });
+    }
+    
+    document.getElementById('changelog-modal').classList.add('active');
+}
+
 function showContextMenu(event, row) {
     const menu = document.getElementById('file-context-menu');
     contextMenuTarget = row;
     
     const isDirectory = row.dataset.isDirectory === 'true';
     const isEditable = row.dataset.editable === 'true';
+    const fileName = row.dataset.name;
+    const isImage = /\.(webp|jpg|jpeg|png)$/i.test(fileName);
     
     // Show/hide edit option
     const editOption = document.getElementById('context-edit');
@@ -2177,6 +2296,14 @@ function showContextMenu(event, row) {
         editOption.style.display = 'none';
     } else {
         editOption.style.display = 'block';
+    }
+    
+    // Show/hide open picture option
+    const openPictureOption = document.getElementById('context-open-picture');
+    if (isDirectory || !isImage) {
+        openPictureOption.style.display = 'none';
+    } else {
+        openPictureOption.style.display = 'block';
     }
     
     // Show/hide download option
@@ -2188,8 +2315,27 @@ function showContextMenu(event, row) {
     }
     
     menu.style.display = 'block';
-    menu.style.left = event.pageX + 'px';
-    menu.style.top = event.pageY + 'px';
+    
+    // Position the menu at the click location
+    // Adjust if it would go off screen
+    const menuWidth = 150;
+    const menuHeight = 200; // approximate
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    
+    let x = event.clientX;
+    let y = event.clientY;
+    
+    if (x + menuWidth > viewportWidth) {
+        x = viewportWidth - menuWidth - 10;
+    }
+    
+    if (y + menuHeight > viewportHeight) {
+        y = viewportHeight - menuHeight - 10;
+    }
+    
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
 }
 
 function hideContextMenu() {
@@ -2198,6 +2344,20 @@ function hideContextMenu() {
 }
 
 function initFileManagerEventListeners() {
+    // Refresh button
+    const refreshBtn = document.getElementById('file-refresh-btn');
+    if (refreshBtn && !refreshBtn.dataset.listenerAdded) {
+        refreshBtn.addEventListener('click', () => loadFiles(currentPath));
+        refreshBtn.dataset.listenerAdded = 'true';
+    }
+    
+    // Change-Log button
+    const changelogBtn = document.getElementById('file-changelog-btn');
+    if (changelogBtn && !changelogBtn.dataset.listenerAdded) {
+        changelogBtn.addEventListener('click', showChangeLog);
+        changelogBtn.dataset.listenerAdded = 'true';
+    }
+    
     // Create folder button
     const createFolderBtn = document.getElementById('create-folder-btn');
     if (createFolderBtn && !createFolderBtn.dataset.listenerAdded) {
@@ -2291,6 +2451,17 @@ function initFileManagerEventListeners() {
         contextEdit.dataset.listenerAdded = 'true';
     }
     
+    const contextOpenPicture = document.getElementById('context-open-picture');
+    if (contextOpenPicture && !contextOpenPicture.dataset.listenerAdded) {
+        contextOpenPicture.addEventListener('click', () => {
+            if (contextMenuTarget) {
+                openImageViewer(contextMenuTarget.dataset.path);
+                hideContextMenu();
+            }
+        });
+        contextOpenPicture.dataset.listenerAdded = 'true';
+    }
+    
     const contextRename = document.getElementById('context-rename');
     if (contextRename && !contextRename.dataset.listenerAdded) {
         contextRename.addEventListener('click', () => {
@@ -2318,6 +2489,24 @@ function initFileManagerEventListeners() {
     document.addEventListener('click', () => {
         hideContextMenu();
     });
+    
+    // Image viewer close
+    const imageViewerClose = document.getElementById('image-viewer-close');
+    if (imageViewerClose && !imageViewerClose.dataset.listenerAdded) {
+        imageViewerClose.addEventListener('click', () => {
+            document.getElementById('image-viewer-modal').classList.remove('active');
+        });
+        imageViewerClose.dataset.listenerAdded = 'true';
+    }
+    
+    // Changelog close
+    const changelogClose = document.getElementById('changelog-close');
+    if (changelogClose && !changelogClose.dataset.listenerAdded) {
+        changelogClose.addEventListener('click', () => {
+            document.getElementById('changelog-modal').classList.remove('active');
+        });
+        changelogClose.dataset.listenerAdded = 'true';
+    }
     
     // Drag and drop
     const dropOverlay = document.getElementById('file-drop-overlay');
