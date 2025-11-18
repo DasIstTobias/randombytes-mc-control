@@ -1,20 +1,21 @@
-package dev.randombytes.mccontrol;
+package dev.randombytes;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import dev.mccontrol.Main;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.*;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.security.*;
 import java.util.Base64;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.logging.Level;
 
-public class MCControlPlugin extends JavaPlugin {
-    private static MCControlPlugin instance;
+public class MainR {
+    private final Main plugin;
+
     private Gson gson;
     private APIServer apiServer;
     private MetricsCollector metricsCollector;
@@ -26,16 +27,19 @@ public class MCControlPlugin extends JavaPlugin {
     private int port;
     private KeyPair keyPair;
     private long startTime; // Track server start time
-    
-    @Override
+
+
+    public MainR(Main plugin) {
+        this.plugin = plugin;
+    }
+
     public void onEnable() {
-        instance = this;
         gson = new GsonBuilder().setPrettyPrinting().create();
         startTime = System.currentTimeMillis(); // Record start time
         
         // Create plugin directory if it doesn't exist
-        if (!getDataFolder().exists()) {
-            getDataFolder().mkdirs();
+        if (!plugin.getDataFolder().exists()) {
+            plugin.getDataFolder().mkdirs();
         }
         
         // Load or generate configuration
@@ -48,24 +52,23 @@ public class MCControlPlugin extends JavaPlugin {
         generateKeyPair();
         
         // Initialize managers
-        metricsCollector = new MetricsCollector(this);
-        playerDataManager = new PlayerDataManager(this);
-        customRecipeManager = new CustomRecipeManager(this);
-        logManager = new LogManager(this);
+        metricsCollector = new MetricsCollector(plugin, this);
+        playerDataManager = new PlayerDataManager(plugin, this);
+        customRecipeManager = new CustomRecipeManager(plugin, this);
+        logManager = new LogManager(plugin, this);
         
         // Attach console log handler to capture server logs
         attachConsoleLogHandler();
         
         // Start API server
-        apiServer = new APIServer(this, port, apiKey, keyPair);
+        apiServer = new APIServer(plugin, this, port, apiKey, keyPair);
         apiServer.start();
-        
-        getLogger().info("RandomBytes MC Control Plugin has been enabled!");
-        getLogger().info("API Server running on port: " + port);
-        getLogger().info("Public key available for backend connection");
+
+        plugin.getLogger().info("RandomBytes MC Control Plugin has been enabled!");
+        plugin.getLogger().info("API Server running on port: " + port);
+        plugin.getLogger().info("Public key available for backend connection");
     }
-    
-    @Override
+
     public void onDisable() {
         if (apiServer != null) {
             apiServer.stop();
@@ -74,12 +77,12 @@ public class MCControlPlugin extends JavaPlugin {
         if (metricsCollector != null) {
             metricsCollector.stop();
         }
-        
-        getLogger().info("RandomBytes MC Control Plugin has been disabled!");
+
+        plugin.getLogger().info("RandomBytes MC Control Plugin has been disabled!");
     }
     
     private void loadConfig() {
-        File configFile = new File(getDataFolder(), "plugin.config");
+        File configFile = new File(plugin.getDataFolder(), "plugin.config");
         
         if (!configFile.exists()) {
             // Create default configuration
@@ -88,9 +91,9 @@ public class MCControlPlugin extends JavaPlugin {
             
             try (FileOutputStream out = new FileOutputStream(configFile)) {
                 props.store(out, "RandomBytes MC Control Plugin Configuration");
-                getLogger().info("Created default configuration file");
+                plugin.getLogger().info("Created default configuration file");
             } catch (IOException e) {
-                getLogger().log(Level.SEVERE, "Failed to create configuration file", e);
+                plugin.getLogger().log(Level.SEVERE, "Failed to create configuration file", e);
             }
             
             port = 25575;
@@ -101,14 +104,14 @@ public class MCControlPlugin extends JavaPlugin {
                 props.load(in);
                 port = Integer.parseInt(props.getProperty("port", "25575"));
             } catch (IOException | NumberFormatException e) {
-                getLogger().log(Level.SEVERE, "Failed to load configuration file", e);
+                plugin.getLogger().log(Level.SEVERE, "Failed to load configuration file", e);
                 port = 25575;
             }
         }
     }
     
     private void loadOrGenerateApiKey() {
-        File apiKeyFile = new File(getDataFolder(), "API-KEY.txt");
+        File apiKeyFile = new File(plugin.getDataFolder(), "API-KEY.txt");
         
         if (!apiKeyFile.exists()) {
             // Generate new API key
@@ -122,21 +125,21 @@ public class MCControlPlugin extends JavaPlugin {
                 apiKeyFile.setWritable(false, false);
                 apiKeyFile.setWritable(true, true);
                 
-                getLogger().warning("===========================================");
-                getLogger().warning("NEW API KEY GENERATED!");
-                getLogger().warning("API Key: " + apiKey);
-                getLogger().warning("Save this key securely for backend configuration!");
-                getLogger().warning("===========================================");
+                plugin.getLogger().warning("===========================================");
+                plugin.getLogger().warning("NEW API KEY GENERATED!");
+                plugin.getLogger().warning("API Key: " + apiKey);
+                plugin.getLogger().warning("Save this key securely for backend configuration!");
+                plugin.getLogger().warning("===========================================");
             } catch (IOException e) {
-                getLogger().log(Level.SEVERE, "Failed to save API key", e);
+                plugin.getLogger().log(Level.SEVERE, "Failed to save API key", e);
             }
         } else {
             // Load existing API key
             try {
                 apiKey = Files.readString(apiKeyFile.toPath()).trim();
-                getLogger().info("Loaded existing API key");
+                plugin.getLogger().info("Loaded existing API key");
             } catch (IOException e) {
-                getLogger().log(Level.SEVERE, "Failed to load API key", e);
+                plugin.getLogger().log(Level.SEVERE, "Failed to load API key", e);
             }
         }
     }
@@ -149,19 +152,15 @@ public class MCControlPlugin extends JavaPlugin {
             
             // Save public key for backend
             String publicKeyStr = Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded());
-            File publicKeyFile = new File(getDataFolder(), "public-key.txt");
+            File publicKeyFile = new File(plugin.getDataFolder(), "public-key.txt");
             Files.writeString(publicKeyFile.toPath(), publicKeyStr);
-            
-            getLogger().info("Generated RSA key pair for secure communication");
+
+            plugin.getLogger().info("Generated RSA key pair for secure communication");
         } catch (NoSuchAlgorithmException | IOException e) {
-            getLogger().log(Level.SEVERE, "Failed to generate key pair", e);
+            plugin.getLogger().log(Level.SEVERE, "Failed to generate key pair", e);
         }
     }
-    
-    public static MCControlPlugin getInstance() {
-        return instance;
-    }
-    
+
     public Gson getGson() {
         return gson;
     }

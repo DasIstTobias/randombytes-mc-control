@@ -1,6 +1,6 @@
 name: RandomBytesMCControl
 version: '1.0.0'
-main: dev.randombytes.mccontrol.MCControlPlugin
+main: dev.mccontrol.Main
 api-version: '1.21'
 author: RandomBytes
 description: A secure Minecraft server control plugin with REST API
