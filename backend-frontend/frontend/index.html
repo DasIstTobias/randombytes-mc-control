@@ -31,6 +31,7 @@
                 <li><a href="#" class="nav-link" data-page="console">Console</a></li>
                 <li><a href="#" class="nav-link" data-page="chat">Chat</a></li>
                 <li><a href="#" class="nav-link" data-page="settings">Server Settings</a></li>
+                <li><a href="#" class="nav-link" data-page="file-manager">File Manager</a></li>
                 
                 <li class="nav-section-title"># MODS</li>
                 <li><a href="#" class="nav-link" data-page="custom-recipes">Custom Recipes</a></li>
@@ -339,7 +340,96 @@
                     </table>
                 </div>
             </div>
+
+            <!-- File Manager Page -->
+            <div id="file-manager-page" class="page">
+                <h2>File Manager</h2>
+                <p class="subtitle">Manage files on the Minecraft server</p>
+                
+                <!-- Breadcrumb navigation -->
+                <div class="file-breadcrumb" id="file-breadcrumb">
+                    <span class="breadcrumb-item" data-path="">Root</span>
+                </div>
+                
+                <!-- Toolbar -->
+                <div class="file-toolbar">
+                    <div class="file-toolbar-left">
+                        <button id="create-folder-btn" class="file-action-btn">Create Folder</button>
+                        <button id="upload-file-btn" class="file-action-btn">Upload File</button>
+                        <input type="file" id="file-upload-input" style="display: none;" multiple>
+                    </div>
+                    <div class="file-toolbar-right">
+                        <input type="text" id="file-search" placeholder="Search files..." autocomplete="off">
+                        <select id="file-sort">
+                            <option value="name">Sort by Name</option>
+                            <option value="size">Sort by Size</option>
+                            <option value="date">Sort by Date</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- File list -->
+                <div class="file-list-container">
+                    <table class="file-list" id="file-list">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Size</th>
+                                <th>Modified</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="file-list-body">
+                            <!-- Files will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Drag and drop overlay -->
+                <div id="file-drop-overlay" class="file-drop-overlay" style="display: none;">
+                    <div class="file-drop-message">Drop files here to upload</div>
+                </div>
+            </div>
         </main>
+    </div>
+
+    <!-- File Editor Modal -->
+    <div id="file-editor-modal" class="modal">
+        <div class="modal-content file-editor-content">
+            <div class="file-editor-header">
+                <h2 id="file-editor-title">Edit File</h2>
+                <span class="close" id="file-editor-close">&times;</span>
+            </div>
+            <div class="file-editor-body">
+                <textarea id="file-editor-textarea" class="file-editor-textarea"></textarea>
+            </div>
+            <div class="file-editor-footer">
+                <button id="file-editor-save" class="primary">Save</button>
+                <button id="file-editor-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Folder Modal -->
+    <div id="create-folder-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="create-folder-close">&times;</span>
+            <h2>Create Folder</h2>
+            <form id="create-folder-form">
+                <input type="text" id="folder-name-input" placeholder="Folder name" required>
+                <button type="submit">Create</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div id="file-context-menu" class="file-context-menu" style="display: none;">
+        <ul>
+            <li id="context-download">Download</li>
+            <li id="context-edit">Edit</li>
+            <li id="context-rename">Rename</li>
+            <li id="context-delete">Delete</li>
+        </ul>
     </div>
 
     <!-- Player Detail Modal -->

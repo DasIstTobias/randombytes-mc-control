@@ -297,6 +297,9 @@ async function loadPage(page) {
                 // Auto-refresh every 2 seconds
                 pageRefreshInterval = setInterval(loadLogs, 2000);
                 break;
+            case 'file-manager':
+                await loadFileManager();
+                break;
         }
     } catch (error) {
         console.error('Error loading page:', error);
@@ -1771,6 +1774,579 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// File Manager
+let currentPath = '';
+let currentFiles = [];
+let currentSortBy = 'name';
+let currentFileSearch = '';
+let contextMenuTarget = null;
+
+async function loadFileManager() {
+    try {
+        await loadFiles(currentPath);
+        initFileManagerEventListeners();
+    } catch (error) {
+        console.error('Error loading file manager:', error);
+    }
+}
+
+async function loadFiles(path) {
+    try {
+        const data = await API.get(`/files?path=${encodeURIComponent(path || '')}`);
+        
+        if (data.error) {
+            await customAlert('Error loading files: ' + data.error);
+            return;
+        }
+        
+        currentPath = data.currentPath || '';
+        currentFiles = data.items || [];
+        
+        // Update breadcrumb
+        updateBreadcrumb(currentPath);
+        
+        // Apply filters and render
+        renderFiles();
+    } catch (error) {
+        console.error('Error loading files:', error);
+        await customAlert('Failed to load files');
+    }
+}
+
+function updateBreadcrumb(path) {
+    const breadcrumb = document.getElementById('file-breadcrumb');
+    breadcrumb.innerHTML = '';
+    
+    // Add root
+    const rootItem = document.createElement('span');
+    rootItem.className = 'breadcrumb-item';
+    rootItem.textContent = 'Root';
+    rootItem.dataset.path = '';
+    rootItem.addEventListener('click', () => loadFiles(''));
+    breadcrumb.appendChild(rootItem);
+    
+    // Add path segments
+    if (path) {
+        const segments = path.split('/').filter(s => s);
+        let currentSegmentPath = '';
+        
+        segments.forEach((segment, index) => {
+            currentSegmentPath += (currentSegmentPath ? '/' : '') + segment;
+            const segmentPath = currentSegmentPath;
+            
+            const item = document.createElement('span');
+            item.className = 'breadcrumb-item';
+            item.textContent = segment;
+            item.dataset.path = segmentPath;
+            item.addEventListener('click', () => loadFiles(segmentPath));
+            breadcrumb.appendChild(item);
+        });
+    }
+}
+
+function renderFiles() {
+    const tbody = document.getElementById('file-list-body');
+    tbody.innerHTML = '';
+    
+    // Filter files
+    let filtered = currentFiles;
+    if (currentFileSearch) {
+        const searchLower = currentFileSearch.toLowerCase();
+        filtered = currentFiles.filter(file => 
+            file.name.toLowerCase().includes(searchLower)
+        );
+    }
+    
+    // Sort files
+    filtered = sortFiles(filtered, currentSortBy);
+    
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">No files found</td></tr>';
+        return;
+    }
+    
+    filtered.forEach(file => {
+        const row = document.createElement('tr');
+        row.dataset.path = file.path;
+        row.dataset.isDirectory = file.isDirectory;
+        row.dataset.name = file.name;
+        row.dataset.editable = file.editable || false;
+        
+        // Name column with icon
+        const nameCell = document.createElement('td');
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-item';
+        
+        const icon = document.createElement('span');
+        icon.className = 'file-icon';
+        if (file.isDirectory) {
+            icon.classList.add('folder');
+        } else {
+            icon.classList.add(file.type || 'file');
+        }
+        
+        const name = document.createElement('span');
+        name.className = 'file-name';
+        if (file.isDirectory) {
+            name.classList.add('directory');
+        }
+        name.textContent = file.name;
+        
+        fileItem.appendChild(icon);
+        fileItem.appendChild(name);
+        nameCell.appendChild(fileItem);
+        
+        // Size column
+        const sizeCell = document.createElement('td');
+        sizeCell.className = 'file-size';
+        sizeCell.textContent = file.isDirectory ? '-' : formatFileSize(file.size);
+        
+        // Modified column
+        const modifiedCell = document.createElement('td');
+        modifiedCell.className = 'file-date';
+        modifiedCell.textContent = file.modified ? formatFileDate(file.modified) : '-';
+        
+        // Actions column
+        const actionsCell = document.createElement('td');
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'file-actions';
+        
+        if (!file.isDirectory) {
+            const downloadBtn = document.createElement('button');
+            downloadBtn.textContent = 'Download';
+            downloadBtn.onclick = (e) => {
+                e.stopPropagation();
+                downloadFile(file.path);
+            };
+            actionsDiv.appendChild(downloadBtn);
+            
+            if (file.editable) {
+                const editBtn = document.createElement('button');
+                editBtn.textContent = 'Edit';
+                editBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    openFileEditor(file.path, file.name);
+                };
+                actionsDiv.appendChild(editBtn);
+            }
+        }
+        
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'danger';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation();
+            deleteFileOrFolder(file.path, file.name, file.isDirectory);
+        };
+        actionsDiv.appendChild(deleteBtn);
+        
+        actionsCell.appendChild(actionsDiv);
+        
+        row.appendChild(nameCell);
+        row.appendChild(sizeCell);
+        row.appendChild(modifiedCell);
+        row.appendChild(actionsCell);
+        
+        // Double-click to navigate into folders
+        row.addEventListener('dblclick', () => {
+            if (file.isDirectory) {
+                loadFiles(file.path);
+            }
+        });
+        
+        // Right-click context menu
+        row.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            showContextMenu(e, row);
+        });
+        
+        tbody.appendChild(row);
+    });
+}
+
+function sortFiles(files, sortBy) {
+    const sorted = [...files];
+    
+    // Always put directories first
+    sorted.sort((a, b) => {
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+        
+        switch (sortBy) {
+            case 'name':
+                return a.name.localeCompare(b.name);
+            case 'size':
+                return (b.size || 0) - (a.size || 0);
+            case 'date':
+                return (b.modified || 0) - (a.modified || 0);
+            default:
+                return 0;
+        }
+    });
+    
+    return sorted;
+}
+
+function formatFileSize(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+function formatFileDate(timestamp) {
+    const date = new Date(timestamp);
+    return date.toLocaleString('en-GB', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+async function downloadFile(path) {
+    try {
+        window.location.href = `/api/files/download?path=${encodeURIComponent(path)}`;
+    } catch (error) {
+        console.error('Error downloading file:', error);
+        await customAlert('Failed to download file');
+    }
+}
+
+async function openFileEditor(path, name) {
+    try {
+        const data = await API.get(`/files/content?path=${encodeURIComponent(path)}`);
+        
+        if (data.error) {
+            await customAlert('Error loading file: ' + data.error);
+            return;
+        }
+        
+        document.getElementById('file-editor-title').textContent = `Edit: ${name}`;
+        document.getElementById('file-editor-textarea').value = data.content || '';
+        document.getElementById('file-editor-modal').classList.add('active');
+        
+        // Store path for saving
+        document.getElementById('file-editor-textarea').dataset.path = path;
+    } catch (error) {
+        console.error('Error loading file for editing:', error);
+        await customAlert('Failed to load file');
+    }
+}
+
+async function saveFileFromEditor() {
+    const textarea = document.getElementById('file-editor-textarea');
+    const path = textarea.dataset.path;
+    const content = textarea.value;
+    
+    try {
+        const data = await API.post(`/files/content?path=${encodeURIComponent(path)}`, {
+            content: content,
+            is_base64: false
+        });
+        
+        if (data.error) {
+            await customAlert('Error saving file: ' + data.error);
+            return;
+        }
+        
+        await customAlert('File saved successfully');
+        document.getElementById('file-editor-modal').classList.remove('active');
+        await loadFiles(currentPath);
+    } catch (error) {
+        console.error('Error saving file:', error);
+        await customAlert('Failed to save file');
+    }
+}
+
+async function deleteFileOrFolder(path, name, isDirectory) {
+    const type = isDirectory ? 'folder' : 'file';
+    const confirmed = await customConfirm(`Are you sure you want to delete this ${type}? ${name}`);
+    
+    if (!confirmed) return;
+    
+    try {
+        const data = await API.delete(`/files?path=${encodeURIComponent(path)}`);
+        
+        if (data.error) {
+            await customAlert('Error deleting ' + type + ': ' + data.error);
+            return;
+        }
+        
+        await loadFiles(currentPath);
+    } catch (error) {
+        console.error('Error deleting ' + type + ':', error);
+        await customAlert('Failed to delete ' + type);
+    }
+}
+
+async function renameFileOrFolder(path, oldName) {
+    const newName = await customPrompt('Enter new name:', oldName);
+    
+    if (!newName || newName === oldName) return;
+    
+    try {
+        const data = await API.post(`/files?path=${encodeURIComponent(path)}`, {
+            action: 'rename',
+            newName: newName
+        });
+        
+        if (data.error) {
+            await customAlert('Error renaming: ' + data.error);
+            return;
+        }
+        
+        await loadFiles(currentPath);
+    } catch (error) {
+        console.error('Error renaming:', error);
+        await customAlert('Failed to rename');
+    }
+}
+
+async function createFolder() {
+    const folderName = await customPrompt('Enter folder name:', '');
+    
+    if (!folderName) return;
+    
+    const folderPath = currentPath ? `${currentPath}/${folderName}` : folderName;
+    
+    try {
+        const data = await API.post(`/files?path=${encodeURIComponent(folderPath)}`, {
+            action: 'mkdir'
+        });
+        
+        if (data.error) {
+            await customAlert('Error creating folder: ' + data.error);
+            return;
+        }
+        
+        await loadFiles(currentPath);
+    } catch (error) {
+        console.error('Error creating folder:', error);
+        await customAlert('Failed to create folder');
+    }
+}
+
+async function uploadFiles(files) {
+    for (const file of files) {
+        try {
+            const reader = new FileReader();
+            
+            reader.onload = async (e) => {
+                const content = e.target.result.split(',')[1]; // Get base64 content
+                const filePath = currentPath ? `${currentPath}/${file.name}` : file.name;
+                
+                try {
+                    const data = await API.post(`/files/content?path=${encodeURIComponent(filePath)}`, {
+                        content: content,
+                        is_base64: true
+                    });
+                    
+                    if (data.error) {
+                        await customAlert(`Error uploading ${file.name}: ${data.error}`);
+                    }
+                } catch (error) {
+                    console.error('Error uploading file:', error);
+                    await customAlert(`Failed to upload ${file.name}`);
+                }
+            };
+            
+            reader.readAsDataURL(file);
+        } catch (error) {
+            console.error('Error reading file:', error);
+        }
+    }
+    
+    // Refresh after a short delay to allow uploads to complete
+    setTimeout(() => loadFiles(currentPath), 1000);
+}
+
+function showContextMenu(event, row) {
+    const menu = document.getElementById('file-context-menu');
+    contextMenuTarget = row;
+    
+    const isDirectory = row.dataset.isDirectory === 'true';
+    const isEditable = row.dataset.editable === 'true';
+    
+    // Show/hide edit option
+    const editOption = document.getElementById('context-edit');
+    if (isDirectory || !isEditable) {
+        editOption.style.display = 'none';
+    } else {
+        editOption.style.display = 'block';
+    }
+    
+    // Show/hide download option
+    const downloadOption = document.getElementById('context-download');
+    if (isDirectory) {
+        downloadOption.style.display = 'none';
+    } else {
+        downloadOption.style.display = 'block';
+    }
+    
+    menu.style.display = 'block';
+    menu.style.left = event.pageX + 'px';
+    menu.style.top = event.pageY + 'px';
+}
+
+function hideContextMenu() {
+    document.getElementById('file-context-menu').style.display = 'none';
+    contextMenuTarget = null;
+}
+
+function initFileManagerEventListeners() {
+    // Create folder button
+    const createFolderBtn = document.getElementById('create-folder-btn');
+    if (createFolderBtn && !createFolderBtn.dataset.listenerAdded) {
+        createFolderBtn.addEventListener('click', createFolder);
+        createFolderBtn.dataset.listenerAdded = 'true';
+    }
+    
+    // Upload file button
+    const uploadBtn = document.getElementById('upload-file-btn');
+    const uploadInput = document.getElementById('file-upload-input');
+    if (uploadBtn && !uploadBtn.dataset.listenerAdded) {
+        uploadBtn.addEventListener('click', () => uploadInput.click());
+        uploadBtn.dataset.listenerAdded = 'true';
+    }
+    
+    if (uploadInput && !uploadInput.dataset.listenerAdded) {
+        uploadInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                uploadFiles(Array.from(e.target.files));
+                e.target.value = ''; // Reset input
+            }
+        });
+        uploadInput.dataset.listenerAdded = 'true';
+    }
+    
+    // Search
+    const searchInput = document.getElementById('file-search');
+    if (searchInput && !searchInput.dataset.listenerAdded) {
+        searchInput.addEventListener('input', (e) => {
+            currentFileSearch = e.target.value.toLowerCase().trim();
+            renderFiles();
+        });
+        searchInput.dataset.listenerAdded = 'true';
+    }
+    
+    // Sort
+    const sortSelect = document.getElementById('file-sort');
+    if (sortSelect && !sortSelect.dataset.listenerAdded) {
+        sortSelect.addEventListener('change', (e) => {
+            currentSortBy = e.target.value;
+            renderFiles();
+        });
+        sortSelect.dataset.listenerAdded = 'true';
+    }
+    
+    // File editor close
+    const editorClose = document.getElementById('file-editor-close');
+    if (editorClose && !editorClose.dataset.listenerAdded) {
+        editorClose.addEventListener('click', () => {
+            document.getElementById('file-editor-modal').classList.remove('active');
+        });
+        editorClose.dataset.listenerAdded = 'true';
+    }
+    
+    // File editor save
+    const editorSave = document.getElementById('file-editor-save');
+    if (editorSave && !editorSave.dataset.listenerAdded) {
+        editorSave.addEventListener('click', saveFileFromEditor);
+        editorSave.dataset.listenerAdded = 'true';
+    }
+    
+    // File editor cancel
+    const editorCancel = document.getElementById('file-editor-cancel');
+    if (editorCancel && !editorCancel.dataset.listenerAdded) {
+        editorCancel.addEventListener('click', () => {
+            document.getElementById('file-editor-modal').classList.remove('active');
+        });
+        editorCancel.dataset.listenerAdded = 'true';
+    }
+    
+    // Context menu actions
+    const contextDownload = document.getElementById('context-download');
+    if (contextDownload && !contextDownload.dataset.listenerAdded) {
+        contextDownload.addEventListener('click', () => {
+            if (contextMenuTarget) {
+                downloadFile(contextMenuTarget.dataset.path);
+                hideContextMenu();
+            }
+        });
+        contextDownload.dataset.listenerAdded = 'true';
+    }
+    
+    const contextEdit = document.getElementById('context-edit');
+    if (contextEdit && !contextEdit.dataset.listenerAdded) {
+        contextEdit.addEventListener('click', () => {
+            if (contextMenuTarget) {
+                openFileEditor(contextMenuTarget.dataset.path, contextMenuTarget.dataset.name);
+                hideContextMenu();
+            }
+        });
+        contextEdit.dataset.listenerAdded = 'true';
+    }
+    
+    const contextRename = document.getElementById('context-rename');
+    if (contextRename && !contextRename.dataset.listenerAdded) {
+        contextRename.addEventListener('click', () => {
+            if (contextMenuTarget) {
+                renameFileOrFolder(contextMenuTarget.dataset.path, contextMenuTarget.dataset.name);
+                hideContextMenu();
+            }
+        });
+        contextRename.dataset.listenerAdded = 'true';
+    }
+    
+    const contextDelete = document.getElementById('context-delete');
+    if (contextDelete && !contextDelete.dataset.listenerAdded) {
+        contextDelete.addEventListener('click', () => {
+            if (contextMenuTarget) {
+                const isDirectory = contextMenuTarget.dataset.isDirectory === 'true';
+                deleteFileOrFolder(contextMenuTarget.dataset.path, contextMenuTarget.dataset.name, isDirectory);
+                hideContextMenu();
+            }
+        });
+        contextDelete.dataset.listenerAdded = 'true';
+    }
+    
+    // Hide context menu on click elsewhere
+    document.addEventListener('click', () => {
+        hideContextMenu();
+    });
+    
+    // Drag and drop
+    const dropOverlay = document.getElementById('file-drop-overlay');
+    const fileManagerPage = document.getElementById('file-manager-page');
+    
+    if (fileManagerPage && !fileManagerPage.dataset.dragListenerAdded) {
+        fileManagerPage.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropOverlay.style.display = 'flex';
+        });
+        
+        fileManagerPage.addEventListener('dragleave', (e) => {
+            if (e.target === fileManagerPage) {
+                dropOverlay.style.display = 'none';
+            }
+        });
+        
+        fileManagerPage.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropOverlay.style.display = 'none';
+            
+            if (e.dataTransfer.files.length > 0) {
+                uploadFiles(Array.from(e.dataTransfer.files));
+            }
+        });
+        
+        fileManagerPage.dataset.dragListenerAdded = 'true';
+    }
+}
 
 // Initialize
 loadPage('status');
