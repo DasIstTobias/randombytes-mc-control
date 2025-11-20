@@ -4,12 +4,12 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>dev.randombytes</groupId>
-    <artifactId>randombytes-mc-control</artifactId>
+    <groupId>dev.mccontrol</groupId>
+    <artifactId>mc-control</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
-    <name>RandomBytes MC Control</name>
+    <name>MC Control</name>
     <description>A secure Minecraft server control plugin</description>
 
     <properties>

@@ -1,8 +1,9 @@
-package dev.randombytes.mccontrol;
+package dev.randombytes;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import org.bukkit.Bukkit;
+import org.bukkit.plugin.java.JavaPlugin;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.OperatingSystemMXBean;
@@ -12,12 +13,14 @@ import java.util.List;
 import java.util.Queue;
 
 public class MetricsCollector {
-    private final MCControlPlugin plugin;
+    private final MainR main;
+    private final JavaPlugin plugin;
     private final Queue<MetricSnapshot> snapshots;
     private final int maxSnapshots = 600; // 10 minutes at 1 snapshot per second
     private int taskId;
     
-    public MetricsCollector(MCControlPlugin plugin) {
+    public MetricsCollector(JavaPlugin plugin, MainR main) {
+        this.main = main;
         this.plugin = plugin;
         this.snapshots = new LinkedList<>();
         startCollecting();

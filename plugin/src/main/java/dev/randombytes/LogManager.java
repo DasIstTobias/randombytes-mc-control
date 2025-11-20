@@ -1,7 +1,8 @@
-package dev.randombytes.mccontrol;
+package dev.randombytes;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import org.bukkit.plugin.Plugin;
 
 import java.io.*;
 import java.nio.file.*;
@@ -10,12 +11,14 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.logging.Level;
 
 public class LogManager {
-    private final MCControlPlugin plugin;
+    private final MainR main;
+    private final Plugin plugin;
     private final File logsFile;
     private final ConcurrentLinkedDeque<String> logs;
     private static final int MAX_LOGS = 5000;
     
-    public LogManager(MCControlPlugin plugin) {
+    public LogManager(Plugin plugin, MainR main) {
+        this.main = main;
         this.plugin = plugin;
         this.logsFile = new File(plugin.getDataFolder(), "combined-logs.txt");
         this.logs = new ConcurrentLinkedDeque<>();

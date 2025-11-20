@@ -1,8 +1,10 @@
-package dev.randombytes.mccontrol;
+package dev.randombytes;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
+import dev.mccontrol.Main;
+import dev.randombytes.MainR;
 
 import java.io.File;
 import java.io.FileReader;
@@ -18,14 +20,16 @@ import java.util.logging.Level;
  * Manages file operation logging with persistent storage
  */
 public class FileChangeLogger {
-    private final MCControlPlugin plugin;
+    private final Main plugin;
+    private final MainR main;
     private final File logFile;
     private final LinkedList<String> logEntries;
     private static final int MAX_ENTRIES = 300;
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd/MM/yyyy HH:mm");
     
-    public FileChangeLogger(MCControlPlugin plugin) {
+    public FileChangeLogger(Main plugin, MainR main) {
         this.plugin = plugin;
+        this.main = main;
         this.logFile = new File(plugin.getDataFolder(), "file-changelog.json");
         this.logEntries = new LinkedList<>();
         loadLog();
@@ -40,7 +44,7 @@ public class FileChangeLogger {
         }
         
         try (FileReader reader = new FileReader(logFile)) {
-            JsonArray array = plugin.getGson().fromJson(reader, JsonArray.class);
+            JsonArray array = main.getGson().fromJson(reader, JsonArray.class);
             if (array != null) {
                 for (int i = 0; i < array.size() && i < MAX_ENTRIES; i++) {
                     logEntries.add(array.get(i).getAsString());
@@ -67,7 +71,7 @@ public class FileChangeLogger {
             }
             
             try (FileWriter writer = new FileWriter(logFile)) {
-                plugin.getGson().toJson(array, writer);
+                main.getGson().toJson(array, writer);
             }
         } catch (IOException e) {
             plugin.getLogger().log(Level.SEVERE, "Failed to save file changelog", e);

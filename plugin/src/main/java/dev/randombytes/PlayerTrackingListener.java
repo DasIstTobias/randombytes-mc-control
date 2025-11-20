@@ -1,4 +1,4 @@
-package dev.randombytes.mccontrol;
+package dev.randombytes;
 
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
