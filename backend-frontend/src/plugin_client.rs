@@ -194,12 +194,14 @@ impl PluginClient {
     }
 
     pub async fn remove_from_ops(&self, uuid: &str) -> Result<Value, Box<dyn Error>> {
-        let endpoint = format!("/ops?uuid={}", uuid);
+        let endpoint = "/ops";
         let url = format!("{}{}", self.base_url, endpoint);
+        let body = serde_json::json!({ "uuid": uuid });
         let response = self
             .client
             .delete(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&body)
             .send()
             .await?;
 
