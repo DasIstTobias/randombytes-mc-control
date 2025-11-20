@@ -195,7 +195,3 @@ To run tests:
 cargo test
 ```
 
-## Support
-
-For issues, questions, or contributions, please visit:
-https://github.com/DasIstTobias/randombytes-mc-control
