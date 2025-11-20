@@ -916,12 +916,12 @@ public class APIServer {
                         handleFileDownload(exchange, path);
                     } else {
                         // List files
-                        JsonObject result = plugin.getFileManager().listFiles(path);
-                        sendResponse(exchange, 200, plugin.getGson().toJson(result));
+                        JsonObject result = main.getFileManager().listFiles(path);
+                        sendResponse(exchange, 200, main.getGson().toJson(result));
                     }
                 } else if ("POST".equals(method)) {
                     String body = readRequestBody(exchange);
-                    JsonObject request = plugin.getGson().fromJson(body, JsonObject.class);
+                    JsonObject request = main.getGson().fromJson(body, JsonObject.class);
                     String action = request.has("action") ? request.get("action").getAsString() : "write";
                     
                     JsonObject result;
@@ -930,27 +930,27 @@ public class APIServer {
                         case "create":
                             String content = request.get("content").getAsString();
                             boolean isBase64 = request.has("isBase64") && request.get("isBase64").getAsBoolean();
-                            result = plugin.getFileManager().writeFile(path, content, isBase64);
+                            result = main.getFileManager().writeFile(path, content, isBase64);
                             break;
                         case "rename":
                             String newName = request.get("newName").getAsString();
-                            result = plugin.getFileManager().renameFile(path, newName);
+                            result = main.getFileManager().renameFile(path, newName);
                             break;
                         case "mkdir":
-                            result = plugin.getFileManager().createDirectory(path);
+                            result = main.getFileManager().createDirectory(path);
                             break;
                         case "read":
-                            result = plugin.getFileManager().readFile(path);
+                            result = main.getFileManager().readFile(path);
                             break;
                         default:
                             sendError(exchange, 400, "Unknown action: " + action);
                             return;
                     }
                     
-                    sendResponse(exchange, 200, plugin.getGson().toJson(result));
+                    sendResponse(exchange, 200, main.getGson().toJson(result));
                 } else if ("DELETE".equals(method)) {
-                    JsonObject result = plugin.getFileManager().deleteFile(path);
-                    sendResponse(exchange, 200, plugin.getGson().toJson(result));
+                    JsonObject result = main.getFileManager().deleteFile(path);
+                    sendResponse(exchange, 200, main.getGson().toJson(result));
                 } else {
                     sendError(exchange, 405, "Method not allowed");
                 }
@@ -962,7 +962,7 @@ public class APIServer {
         
         private void handleFileDownload(HttpExchange exchange, String path) throws IOException {
             try {
-                JsonObject fileData = plugin.getFileManager().readFile(path);
+                JsonObject fileData = main.getFileManager().readFile(path);
                 
                 if (fileData.has("error")) {
                     sendError(exchange, 404, fileData.get("error").getAsString());
@@ -1036,11 +1036,11 @@ public class APIServer {
                     return;
                 }
                 
-                JsonArray entries = plugin.getFileManager().getChangeLogger().getEntries();
+                JsonArray entries = main.getFileManager().getChangeLogger().getEntries();
                 JsonObject response = new JsonObject();
                 response.add("entries", entries);
                 
-                sendResponse(exchange, 200, plugin.getGson().toJson(response));
+                sendResponse(exchange, 200, main.getGson().toJson(response));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error in FileChangelogHandler", e);
                 sendError(exchange, 500, "Internal server error");

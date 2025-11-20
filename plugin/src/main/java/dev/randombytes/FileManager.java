@@ -1,7 +1,8 @@
-package dev.randombytes.mccontrol;
+package dev.randombytes;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import dev.mccontrol.Main;
 import org.bukkit.Bukkit;
 
 import java.io.*;
@@ -17,7 +18,8 @@ import java.util.logging.Level;
  * Manages file operations for the Minecraft server with security validation
  */
 public class FileManager {
-    private final MCControlPlugin plugin;
+    private final Main plugin;
+    private final MainR main;
     private final Path serverRoot;
     private final FileChangeLogger changeLogger;
     private static final long MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
@@ -28,12 +30,13 @@ public class FileManager {
         ".txt", ".yml", ".yaml", ".json", ".properties", ".log", ".conf", ".cfg", ".toml"
     );
     
-    public FileManager(MCControlPlugin plugin) {
+    public FileManager(Main plugin, MainR main) {
         this.plugin = plugin;
+        this.main = main;
         // The server root is the directory containing the server JAR (where PaperMC/Spigot is)
         // Bukkit.getWorldContainer() returns the directory where worlds are stored, which is the server root
         this.serverRoot = Bukkit.getWorldContainer().toPath().toAbsolutePath().normalize();
-        this.changeLogger = new FileChangeLogger(plugin);
+        this.changeLogger = new dev.randombytes.FileChangeLogger(plugin, main);
         
         plugin.getLogger().info("File Manager initialised with root: " + serverRoot.toString());
     }

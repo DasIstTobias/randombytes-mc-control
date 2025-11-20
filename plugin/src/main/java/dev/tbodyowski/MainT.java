@@ -13,4 +13,8 @@ public class MainT {
     public void onEnable(){
 
     }
+
+    public void onDisable(){
+
+    }
 }
