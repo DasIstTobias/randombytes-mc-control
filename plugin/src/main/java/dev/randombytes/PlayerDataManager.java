@@ -8,28 +8,29 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class PlayerDataManager {
-    private final MainR main;
-    private final Plugin plugin;
     private final Map<UUID, PlayerData> playerDataCache;
     private final List<String> consoleLogBuffer;
     private final List<String> chatLogBuffer;
     private final int maxLogLines = 1000;
+    private final Plugin plugin;
     
-    public PlayerDataManager(Plugin plugin, MainR main) {
-        this.main = main;
+    public PlayerDataManager(Plugin plugin) {
         this.plugin = plugin;
         this.playerDataCache = new ConcurrentHashMap<>();
         this.consoleLogBuffer = Collections.synchronizedList(new ArrayList<>());
         this.chatLogBuffer = Collections.synchronizedList(new ArrayList<>());
         
         // Register event listeners
-        Bukkit.getPluginManager().registerEvents(new PlayerTrackingListener(this), plugin);
+        Bukkit.getPluginManager().registerEvents(new PlayerTrackingListener(this), Main.getPlugin(Main.class));
         
         // Load existing player data
         loadPlayerData();
@@ -39,7 +40,7 @@ public class PlayerDataManager {
     }
     
     private void startInventoryCaching() {
-        Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, () -> {
+        Bukkit.getScheduler().scheduleSyncRepeatingTask(Main.getPlugin(Main.class), () -> {
             cacheOnlinePlayerInventories();
         }, 200L, 200L); // Start after 10 seconds, repeat every 10 seconds
     }
@@ -63,7 +64,7 @@ public class PlayerDataManager {
                     
                     File cacheFile = new File(cacheDir, player.getUniqueId().toString() + ".json");
                     try (FileWriter writer = new FileWriter(cacheFile)) {
-                        main.getGson().toJson(cached, writer);
+                        Main.getInstance().getGson().toJson(cached, writer);
                     }
                 } catch (IOException e) {
                     plugin.getLogger().warning("Failed to cache inventory for " + player.getName() + ": " + e.getMessage());
@@ -194,7 +195,7 @@ public class PlayerDataManager {
             }
             
             try (FileReader reader = new FileReader(cacheFile)) {
-                JsonObject cached = main.getGson().fromJson(reader, JsonObject.class);
+                JsonObject cached = Main.getInstance().getGson().fromJson(reader, JsonObject.class);
                 return cached.getAsJsonArray("inventory");
             }
         } catch (Exception e) {
@@ -508,8 +509,8 @@ public class PlayerDataManager {
         }
         
         // Also add to combined logs
-        if (main.getLogManager() != null) {
-            main.getLogManager().addLog("CHAT: " + message);
+        if (Main.getInstance().getLogManager() != null) {
+            Main.getInstance().getLogManager().addLog("CHAT: " + message);
         }
     }
     

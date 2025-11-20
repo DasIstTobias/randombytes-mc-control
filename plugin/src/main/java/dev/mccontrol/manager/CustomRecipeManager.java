@@ -1,32 +1,37 @@
-package dev.randombytes;
+package dev.mccontrol.manager;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import dev.mccontrol.Main;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
-import org.bukkit.event.player.PlayerGameModeChangeEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.ShapelessRecipe;
 import org.bukkit.plugin.Plugin;
 
-import java.io.*;
-import java.util.*;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 import java.util.logging.Level;
 
 public class CustomRecipeManager {
-    private final MainR main;
-    private final Plugin plugin;
     private final File recipesFile;
     private final Map<String, JsonObject> recipes;
     private final Map<String, NamespacedKey> recipeKeys;
+    private final Plugin plugin;
+
     
-    public CustomRecipeManager(Plugin plugin, MainR main) {
+    public CustomRecipeManager(Plugin plugin) {
         this.plugin = plugin;
         this.recipesFile = new File(plugin.getDataFolder(), "custom-recipes.json");
-        this.main = main;
+
         this.recipes = new HashMap<>();
         this.recipeKeys = new HashMap<>();
         
@@ -40,7 +45,7 @@ public class CustomRecipeManager {
         }
         
         try (FileReader reader = new FileReader(recipesFile)) {
-            JsonObject root = main.getGson().fromJson(reader, JsonObject.class);
+            JsonObject root = Main.getInstance().getGson().fromJson(reader, JsonObject.class);
             if (root != null && root.has("recipes")) {
                 JsonArray recipesArray = root.getAsJsonArray("recipes");
                 for (JsonElement element : recipesArray) {
@@ -66,7 +71,7 @@ public class CustomRecipeManager {
             root.add("recipes", recipesArray);
             
             try (FileWriter writer = new FileWriter(recipesFile)) {
-                main.getGson().toJson(root, writer);
+                Main.getInstance().getGson().toJson(root, writer);
             }
         } catch (IOException e) {
             plugin.getLogger().log(Level.SEVERE, "Failed to save custom recipes", e);

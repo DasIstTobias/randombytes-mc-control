@@ -1,10 +1,11 @@
-package dev.randombytes;
+package dev.mccontrol.api;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.sun.net.httpserver.HttpServer;
-import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
+import com.sun.net.httpserver.HttpServer;
+import dev.mccontrol.Main;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 
@@ -13,31 +14,33 @@ import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import java.io.*;
 import java.net.InetSocketAddress;
-import java.security.*;
-import java.util.*;
+import java.security.KeyPair;
+import java.util.Base64;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 
 public class APIServer {
-    private final MainR main;
     private final Plugin plugin;
     private final int port;
-    private final String apiKey;
-    private final KeyPair serverKeyPair;
+    private String apiKey;
+    private KeyPair serverKeyPair;
     private HttpServer server;
     private final Map<String, SecretKey> sessionKeys;
     
-    public APIServer(Plugin plugin, MainR main, int port, String apiKey, KeyPair keyPair) {
-        this.main = main;
+    public APIServer(Plugin plugin, int port) {
         this.plugin = plugin;
         this.port = port;
-        this.apiKey = apiKey;
-        this.serverKeyPair = keyPair;
         this.sessionKeys = new ConcurrentHashMap<>();
     }
     
     public void start() {
         try {
+
+            plugin.getLogger().info("RandomBytes MC Control Plugin has been enabled!");
+            plugin.getLogger().info("API Server running on port: " + port);
+            plugin.getLogger().info("Public key available for backend connection");
+
             server = HttpServer.create(new InetSocketAddress(port), 0);
             
             // Setup endpoints
@@ -66,6 +69,7 @@ public class APIServer {
             
             server.setExecutor(null);
             server.start();
+
             
             plugin.getLogger().info("API Server started on port " + port);
         } catch (IOException e) {
@@ -79,7 +83,8 @@ public class APIServer {
             plugin.getLogger().info("API Server stopped");
         }
     }
-    
+
+
     private void sendResponse(HttpExchange exchange, int statusCode, String response) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
@@ -93,7 +98,7 @@ public class APIServer {
     private void sendError(HttpExchange exchange, int statusCode, String message) throws IOException {
         JsonObject error = new JsonObject();
         error.addProperty("error", message);
-        sendResponse(exchange, statusCode, main.getGson().toJson(error));
+        sendResponse(exchange, statusCode, Main.getInstance().getGson().toJson(error));
     }
     
     private String readRequestBody(HttpExchange exchange) throws IOException {
@@ -133,7 +138,7 @@ public class APIServer {
                 response.addProperty("algorithm", "RSA");
                 response.addProperty("keySize", 2048);
                 
-                sendResponse(exchange, 200, main.getGson().toJson(response));
+                sendResponse(exchange, 200, Main.getInstance().getGson().toJson(response));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Handshake error", e);
                 sendError(exchange, 500, "Internal server error");
@@ -152,7 +157,7 @@ public class APIServer {
             
             try {
                 String body = readRequestBody(exchange);
-                JsonObject request = main.getGson().fromJson(body, JsonObject.class);
+                JsonObject request = Main.getInstance().getGson().fromJson(body, JsonObject.class);
                 
                 String encryptedApiKey = request.get("apiKey").getAsString();
                 String sessionId = request.get("sessionId").getAsString();
@@ -178,7 +183,7 @@ public class APIServer {
                 response.addProperty("authenticated", true);
                 response.addProperty("sessionKey", Base64.getEncoder().encodeToString(sessionKey.getEncoded()));
                 
-                sendResponse(exchange, 200, main.getGson().toJson(response));
+                sendResponse(exchange, 200, Main.getInstance().getGson().toJson(response));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Authentication error", e);
                 sendError(exchange, 500, "Internal server error");
@@ -201,8 +206,8 @@ public class APIServer {
             }
             
             try {
-                JsonObject metrics = main.getMetricsCollector().getMetrics();
-                sendResponse(exchange, 200, main.getGson().toJson(metrics));
+                JsonObject metrics = Main.getInstance().getMetricsCollector().getMetrics();
+                sendResponse(exchange, 200, Main.getInstance().getGson().toJson(metrics));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error getting metrics", e);
                 sendError(exchange, 500, "Internal server error");
@@ -225,8 +230,8 @@ public class APIServer {
             }
             
             try {
-                JsonObject players = main.getPlayerDataManager().getAllPlayersData();
-                sendResponse(exchange, 200, main.getGson().toJson(players));
+                JsonObject players = Main.getInstance().getPlayerDataManager().getAllPlayersData();
+                sendResponse(exchange, 200, Main.getInstance().getGson().toJson(players));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error getting players", e);
                 sendError(exchange, 500, "Internal server error");
@@ -253,12 +258,12 @@ public class APIServer {
             
             if ("GET".equals(exchange.getRequestMethod())) {
                 try {
-                    JsonObject playerData = main.getPlayerDataManager().getPlayerData(uuid);
+                    JsonObject playerData = Main.getInstance().getPlayerDataManager().getPlayerData(uuid);
                     if (playerData == null) {
                         sendError(exchange, 404, "Player not found");
                         return;
                     }
-                    sendResponse(exchange, 200, main.getGson().toJson(playerData));
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(playerData));
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Error getting player data", e);
                     sendError(exchange, 500, "Internal server error");
@@ -266,16 +271,16 @@ public class APIServer {
             } else if ("POST".equals(exchange.getRequestMethod())) {
                 try {
                     String body = readRequestBody(exchange);
-                    JsonObject request = main.getGson().fromJson(body, JsonObject.class);
+                    JsonObject request = Main.getInstance().getGson().fromJson(body, JsonObject.class);
                     String action = request.get("action").getAsString();
                     
                     Bukkit.getScheduler().runTask(plugin, () -> {
-                        main.getPlayerDataManager().performPlayerAction(uuid, action);
+                        Main.getInstance().getPlayerDataManager().performPlayerAction(uuid, action);
                     });
                     
                     JsonObject response = new JsonObject();
                     response.addProperty("success", true);
-                    sendResponse(exchange, 200, main.getGson().toJson(response));
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(response));
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Error performing player action", e);
                     sendError(exchange, 500, "Internal server error");
@@ -297,8 +302,8 @@ public class APIServer {
             
             if ("GET".equals(exchange.getRequestMethod())) {
                 try {
-                    JsonObject whitelist = main.getPlayerDataManager().getWhitelist();
-                    sendResponse(exchange, 200, main.getGson().toJson(whitelist));
+                    JsonObject whitelist = Main.getInstance().getPlayerDataManager().getWhitelist();
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(whitelist));
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Error getting whitelist", e);
                     sendError(exchange, 500, "Internal server error");
@@ -306,17 +311,17 @@ public class APIServer {
             } else if ("POST".equals(exchange.getRequestMethod())) {
                 try {
                     String body = readRequestBody(exchange);
-                    JsonObject request = main.getGson().fromJson(body, JsonObject.class);
+                    JsonObject request = Main.getInstance().getGson().fromJson(body, JsonObject.class);
                     String name = request.get("name").getAsString();
                     String uuid = request.get("uuid").getAsString();
                     
                     Bukkit.getScheduler().runTask(plugin, () -> {
-                        main.getPlayerDataManager().addToWhitelist(name, uuid);
+                        Main.getInstance().getPlayerDataManager().addToWhitelist(name, uuid);
                     });
                     
                     JsonObject response = new JsonObject();
                     response.addProperty("success", true);
-                    sendResponse(exchange, 200, main.getGson().toJson(response));
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(response));
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Error adding to whitelist", e);
                     sendError(exchange, 500, "Internal server error");
@@ -331,12 +336,12 @@ public class APIServer {
                     String uuid = query.substring(5);
                     
                     Bukkit.getScheduler().runTask(plugin, () -> {
-                        main.getPlayerDataManager().removeFromWhitelist(uuid);
+                        Main.getInstance().getPlayerDataManager().removeFromWhitelist(uuid);
                     });
                     
                     JsonObject response = new JsonObject();
                     response.addProperty("success", true);
-                    sendResponse(exchange, 200, main.getGson().toJson(response));
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(response));
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Error removing from whitelist", e);
                     sendError(exchange, 500, "Internal server error");
@@ -358,8 +363,8 @@ public class APIServer {
             
             if ("GET".equals(exchange.getRequestMethod())) {
                 try {
-                    JsonObject blacklist = main.getPlayerDataManager().getBlacklist();
-                    sendResponse(exchange, 200, main.getGson().toJson(blacklist));
+                    JsonObject blacklist = Main.getInstance().getPlayerDataManager().getBlacklist();
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(blacklist));
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Error getting blacklist", e);
                     sendError(exchange, 500, "Internal server error");
@@ -367,17 +372,17 @@ public class APIServer {
             } else if ("POST".equals(exchange.getRequestMethod())) {
                 try {
                     String body = readRequestBody(exchange);
-                    JsonObject request = main.getGson().fromJson(body, JsonObject.class);
+                    JsonObject request = Main.getInstance().getGson().fromJson(body, JsonObject.class);
                     String name = request.get("name").getAsString();
                     String uuid = request.get("uuid").getAsString();
                     
                     Bukkit.getScheduler().runTask(plugin, () -> {
-                        main.getPlayerDataManager().addToBlacklist(name, uuid);
+                        Main.getInstance().getPlayerDataManager().addToBlacklist(name, uuid);
                     });
                     
                     JsonObject response = new JsonObject();
                     response.addProperty("success", true);
-                    sendResponse(exchange, 200, main.getGson().toJson(response));
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(response));
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Error adding to blacklist", e);
                     sendError(exchange, 500, "Internal server error");
@@ -392,12 +397,12 @@ public class APIServer {
                     String uuid = query.substring(5);
                     
                     Bukkit.getScheduler().runTask(plugin, () -> {
-                        main.getPlayerDataManager().removeFromBlacklist(uuid);
+                        Main.getInstance().getPlayerDataManager().removeFromBlacklist(uuid);
                     });
                     
                     JsonObject response = new JsonObject();
                     response.addProperty("success", true);
-                    sendResponse(exchange, 200, main.getGson().toJson(response));
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(response));
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Error removing from blacklist", e);
                     sendError(exchange, 500, "Internal server error");
@@ -423,8 +428,8 @@ public class APIServer {
             }
             
             try {
-                JsonObject plugins = main.getPlayerDataManager().getPluginsList();
-                sendResponse(exchange, 200, main.getGson().toJson(plugins));
+                JsonObject plugins = Main.getInstance().getPlayerDataManager().getPluginsList();
+                sendResponse(exchange, 200, Main.getInstance().getGson().toJson(plugins));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error getting plugins", e);
                 sendError(exchange, 500, "Internal server error");
@@ -447,10 +452,10 @@ public class APIServer {
             }
             
             try {
-                JsonObject serverInfo = main.getPlayerDataManager().getServerInfo();
+                JsonObject serverInfo = Main.getInstance().getPlayerDataManager().getServerInfo();
                 // Add uptime
-                serverInfo.addProperty("uptime", main.getUptime());
-                sendResponse(exchange, 200, main.getGson().toJson(serverInfo));
+                serverInfo.addProperty("uptime", Main.getInstance().getUptime());
+                sendResponse(exchange, 200, Main.getInstance().getGson().toJson(serverInfo));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error getting server info", e);
                 sendError(exchange, 500, "Internal server error");
@@ -485,7 +490,7 @@ public class APIServer {
                 
                 JsonObject response = new JsonObject();
                 response.addProperty("icon", base64Icon);
-                sendResponse(exchange, 200, main.getGson().toJson(response));
+                sendResponse(exchange, 200, Main.getInstance().getGson().toJson(response));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error getting server icon", e);
                 sendError(exchange, 500, "Internal server error");
@@ -508,8 +513,8 @@ public class APIServer {
             }
             
             try {
-                JsonObject geyserInfo = main.getPlayerDataManager().getGeyserMCInfo();
-                sendResponse(exchange, 200, main.getGson().toJson(geyserInfo));
+                JsonObject geyserInfo = Main.getInstance().getPlayerDataManager().getGeyserMCInfo();
+                sendResponse(exchange, 200, Main.getInstance().getGson().toJson(geyserInfo));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error getting GeyserMC info", e);
                 sendError(exchange, 500, "Internal server error");
@@ -532,8 +537,8 @@ public class APIServer {
             }
             
             try {
-                JsonObject logs = main.getPlayerDataManager().getConsoleLogs();
-                sendResponse(exchange, 200, main.getGson().toJson(logs));
+                JsonObject logs = Main.getInstance().getPlayerDataManager().getConsoleLogs();
+                sendResponse(exchange, 200, Main.getInstance().getGson().toJson(logs));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error getting console logs", e);
                 sendError(exchange, 500, "Internal server error");
@@ -557,7 +562,7 @@ public class APIServer {
             
             try {
                 String body = readRequestBody(exchange);
-                JsonObject request = main.getGson().fromJson(body, JsonObject.class);
+                JsonObject request = Main.getInstance().getGson().fromJson(body, JsonObject.class);
                 String command = request.get("command").getAsString();
                 
                 Bukkit.getScheduler().runTask(plugin, () -> {
@@ -566,7 +571,7 @@ public class APIServer {
                 
                 JsonObject response = new JsonObject();
                 response.addProperty("success", true);
-                sendResponse(exchange, 200, main.getGson().toJson(response));
+                sendResponse(exchange, 200, Main.getInstance().getGson().toJson(response));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error executing command", e);
                 sendError(exchange, 500, "Internal server error");
@@ -585,8 +590,8 @@ public class APIServer {
             
             if ("GET".equals(exchange.getRequestMethod())) {
                 try {
-                    JsonObject ops = main.getPlayerDataManager().getOps();
-                    sendResponse(exchange, 200, main.getGson().toJson(ops));
+                    JsonObject ops = Main.getInstance().getPlayerDataManager().getOps();
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(ops));
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Error getting ops", e);
                     sendError(exchange, 500, "Internal server error");
@@ -594,17 +599,17 @@ public class APIServer {
             } else if ("POST".equals(exchange.getRequestMethod())) {
                 try {
                     String body = readRequestBody(exchange);
-                    JsonObject request = main.getGson().fromJson(body, JsonObject.class);
+                    JsonObject request = Main.getInstance().getGson().fromJson(body, JsonObject.class);
                     String name = request.get("name").getAsString();
                     String uuid = request.get("uuid").getAsString();
                     
                     Bukkit.getScheduler().runTask(plugin, () -> {
-                        main.getPlayerDataManager().addToOps(name, uuid);
+                        Main.getInstance().getPlayerDataManager().addToOps(name, uuid);
                     });
                     
                     JsonObject response = new JsonObject();
                     response.addProperty("success", true);
-                    sendResponse(exchange, 200, main.getGson().toJson(response));
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(response));
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Error adding op", e);
                     sendError(exchange, 500, "Internal server error");
@@ -619,12 +624,12 @@ public class APIServer {
                     String uuid = query.substring(5);
                     
                     Bukkit.getScheduler().runTask(plugin, () -> {
-                        main.getPlayerDataManager().removeFromOps(uuid);
+                        Main.getInstance().getPlayerDataManager().removeFromOps(uuid);
                     });
                     
                     JsonObject response = new JsonObject();
                     response.addProperty("success", true);
-                    sendResponse(exchange, 200, main.getGson().toJson(response));
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(response));
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Error removing op", e);
                     sendError(exchange, 500, "Internal server error");
@@ -646,8 +651,8 @@ public class APIServer {
             
             if ("GET".equals(exchange.getRequestMethod())) {
                 try {
-                    JsonObject logs = main.getPlayerDataManager().getChatLogs();
-                    sendResponse(exchange, 200, main.getGson().toJson(logs));
+                    JsonObject logs = Main.getInstance().getPlayerDataManager().getChatLogs();
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(logs));
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Error getting chat logs", e);
                     sendError(exchange, 500, "Internal server error");
@@ -655,16 +660,16 @@ public class APIServer {
             } else if ("POST".equals(exchange.getRequestMethod())) {
                 try {
                     String body = readRequestBody(exchange);
-                    JsonObject request = main.getGson().fromJson(body, JsonObject.class);
+                    JsonObject request = Main.getInstance().getGson().fromJson(body, JsonObject.class);
                     String message = request.get("message").getAsString();
                     
                     Bukkit.getScheduler().runTask(plugin, () -> {
-                        main.getPlayerDataManager().sendChatMessage(message);
+                        Main.getInstance().getPlayerDataManager().sendChatMessage(message);
                     });
                     
                     JsonObject response = new JsonObject();
                     response.addProperty("success", true);
-                    sendResponse(exchange, 200, main.getGson().toJson(response));
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(response));
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Error sending chat message", e);
                     sendError(exchange, 500, "Internal server error");
@@ -688,8 +693,8 @@ public class APIServer {
             
             if ("GET".equals(exchange.getRequestMethod()) && "/api/settings".equals(path)) {
                 try {
-                    JsonObject settings = main.getPlayerDataManager().getSettings();
-                    sendResponse(exchange, 200, main.getGson().toJson(settings));
+                    JsonObject settings = Main.getInstance().getPlayerDataManager().getSettings();
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(settings));
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Error getting settings", e);
                     sendError(exchange, 500, "Internal server error");
@@ -697,17 +702,17 @@ public class APIServer {
             } else if ("POST".equals(exchange.getRequestMethod())) {
                 try {
                     String body = readRequestBody(exchange);
-                    JsonObject request = main.getGson().fromJson(body, JsonObject.class);
+                    JsonObject request = Main.getInstance().getGson().fromJson(body, JsonObject.class);
                     
                     if (path.endsWith("/properties")) {
                         JsonObject properties = request.getAsJsonObject("properties");
                         Bukkit.getScheduler().runTask(plugin, () -> {
-                            main.getPlayerDataManager().updateServerProperties(properties);
+                            Main.getInstance().getPlayerDataManager().updateServerProperties(properties);
                         });
                     } else if (path.endsWith("/gamerules")) {
                         JsonObject gamerules = request.getAsJsonObject("gamerules");
                         Bukkit.getScheduler().runTask(plugin, () -> {
-                            main.getPlayerDataManager().updateGameRules(gamerules);
+                            Main.getInstance().getPlayerDataManager().updateGameRules(gamerules);
                         });
                     } else {
                         sendError(exchange, 404, "Unknown settings endpoint");
@@ -716,7 +721,7 @@ public class APIServer {
                     
                     JsonObject response = new JsonObject();
                     response.addProperty("success", true);
-                    sendResponse(exchange, 200, main.getGson().toJson(response));
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(response));
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Error updating settings", e);
                     sendError(exchange, 500, "Internal server error");
@@ -745,7 +750,7 @@ public class APIServer {
                 JsonObject response = new JsonObject();
                 response.addProperty("success", true);
                 response.addProperty("message", "Server restart initiated");
-                sendResponse(exchange, 200, main.getGson().toJson(response));
+                sendResponse(exchange, 200, Main.getInstance().getGson().toJson(response));
                 
                 // Schedule server restart
                 Bukkit.getScheduler().runTaskLater(plugin, () -> {
@@ -771,18 +776,18 @@ public class APIServer {
                 String method = exchange.getRequestMethod();
                 
                 if ("GET".equals(method)) {
-                    JsonObject recipes = main.getCustomRecipeManager().getAllRecipes();
-                    sendResponse(exchange, 200, main.getGson().toJson(recipes));
+                    JsonObject recipes = Main.getInstance().getCustomRecipeManager().getAllRecipes();
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(recipes));
                 } else if ("POST".equals(method)) {
                     String body = readRequestBody(exchange);
-                    JsonObject recipeData = main.getGson().fromJson(body, JsonObject.class);
+                    JsonObject recipeData = Main.getInstance().getGson().fromJson(body, JsonObject.class);
                     
-                    JsonObject result = main.getCustomRecipeManager().createRecipe(recipeData);
+                    JsonObject result = Main.getInstance().getCustomRecipeManager().createRecipe(recipeData);
                     
                     if (result.has("error")) {
-                        sendResponse(exchange, 400, main.getGson().toJson(result));
+                        sendResponse(exchange, 400, Main.getInstance().getGson().toJson(result));
                     } else {
-                        sendResponse(exchange, 200, main.getGson().toJson(result));
+                        sendResponse(exchange, 200, Main.getInstance().getGson().toJson(result));
                     }
                 } else {
                     sendError(exchange, 405, "Method not allowed");
@@ -825,31 +830,31 @@ public class APIServer {
                 }
                 
                 if ("GET".equals(method)) {
-                    JsonObject recipe = main.getCustomRecipeManager().getRecipe(id);
+                    JsonObject recipe = Main.getInstance().getCustomRecipeManager().getRecipe(id);
                     
                     if (recipe.has("error")) {
-                        sendResponse(exchange, 404, main.getGson().toJson(recipe));
+                        sendResponse(exchange, 404, Main.getInstance().getGson().toJson(recipe));
                     } else {
-                        sendResponse(exchange, 200, main.getGson().toJson(recipe));
+                        sendResponse(exchange, 200, Main.getInstance().getGson().toJson(recipe));
                     }
                 } else if ("POST".equals(method)) {
                     String body = readRequestBody(exchange);
-                    JsonObject recipeData = main.getGson().fromJson(body, JsonObject.class);
+                    JsonObject recipeData = Main.getInstance().getGson().fromJson(body, JsonObject.class);
                     
-                    JsonObject result = main.getCustomRecipeManager().updateRecipe(id, recipeData);
+                    JsonObject result = Main.getInstance().getCustomRecipeManager().updateRecipe(id, recipeData);
                     
                     if (result.has("error")) {
-                        sendResponse(exchange, 400, main.getGson().toJson(result));
+                        sendResponse(exchange, 400, Main.getInstance().getGson().toJson(result));
                     } else {
-                        sendResponse(exchange, 200, main.getGson().toJson(result));
+                        sendResponse(exchange, 200, Main.getInstance().getGson().toJson(result));
                     }
                 } else if ("DELETE".equals(method)) {
-                    JsonObject result = main.getCustomRecipeManager().deleteRecipe(id);
+                    JsonObject result = Main.getInstance().getCustomRecipeManager().deleteRecipe(id);
                     
                     if (result.has("error")) {
-                        sendResponse(exchange, 404, main.getGson().toJson(result));
+                        sendResponse(exchange, 404, Main.getInstance().getGson().toJson(result));
                     } else {
-                        sendResponse(exchange, 200, main.getGson().toJson(result));
+                        sendResponse(exchange, 200, Main.getInstance().getGson().toJson(result));
                     }
                 } else {
                     sendError(exchange, 405, "Method not allowed");
@@ -876,8 +881,8 @@ public class APIServer {
             }
             
             try {
-                JsonObject logs = main.getLogManager().getAllLogs();
-                sendResponse(exchange, 200, main.getGson().toJson(logs));
+                JsonObject logs = Main.getInstance().getLogManager().getAllLogs();
+                sendResponse(exchange, 200, Main.getInstance().getGson().toJson(logs));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error getting logs", e);
                 sendError(exchange, 500, "Internal server error");
@@ -916,12 +921,12 @@ public class APIServer {
                         handleFileDownload(exchange, path);
                     } else {
                         // List files
-                        JsonObject result = main.getFileManager().listFiles(path);
-                        sendResponse(exchange, 200, main.getGson().toJson(result));
+                        JsonObject result = Main.getInstance().getFileManager().listFiles(path);
+                        sendResponse(exchange, 200, Main.getInstance().getGson().toJson(result));
                     }
                 } else if ("POST".equals(method)) {
                     String body = readRequestBody(exchange);
-                    JsonObject request = main.getGson().fromJson(body, JsonObject.class);
+                    JsonObject request = Main.getInstance().getGson().fromJson(body, JsonObject.class);
                     String action = request.has("action") ? request.get("action").getAsString() : "write";
                     
                     JsonObject result;
@@ -930,27 +935,27 @@ public class APIServer {
                         case "create":
                             String content = request.get("content").getAsString();
                             boolean isBase64 = request.has("isBase64") && request.get("isBase64").getAsBoolean();
-                            result = main.getFileManager().writeFile(path, content, isBase64);
+                            result = Main.getInstance().getFileManager().writeFile(path, content, isBase64);
                             break;
                         case "rename":
                             String newName = request.get("newName").getAsString();
-                            result = main.getFileManager().renameFile(path, newName);
+                            result = Main.getInstance().getFileManager().renameFile(path, newName);
                             break;
                         case "mkdir":
-                            result = main.getFileManager().createDirectory(path);
+                            result = Main.getInstance().getFileManager().createDirectory(path);
                             break;
                         case "read":
-                            result = main.getFileManager().readFile(path);
+                            result = Main.getInstance().getFileManager().readFile(path);
                             break;
                         default:
                             sendError(exchange, 400, "Unknown action: " + action);
                             return;
                     }
                     
-                    sendResponse(exchange, 200, main.getGson().toJson(result));
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(result));
                 } else if ("DELETE".equals(method)) {
-                    JsonObject result = main.getFileManager().deleteFile(path);
-                    sendResponse(exchange, 200, main.getGson().toJson(result));
+                    JsonObject result = Main.getInstance().getFileManager().deleteFile(path);
+                    sendResponse(exchange, 200, Main.getInstance().getGson().toJson(result));
                 } else {
                     sendError(exchange, 405, "Method not allowed");
                 }
@@ -962,7 +967,7 @@ public class APIServer {
         
         private void handleFileDownload(HttpExchange exchange, String path) throws IOException {
             try {
-                JsonObject fileData = main.getFileManager().readFile(path);
+                JsonObject fileData = Main.getInstance().getFileManager().readFile(path);
                 
                 if (fileData.has("error")) {
                     sendError(exchange, 404, fileData.get("error").getAsString());
@@ -1036,15 +1041,31 @@ public class APIServer {
                     return;
                 }
                 
-                JsonArray entries = main.getFileManager().getChangeLogger().getEntries();
+                JsonArray entries = Main.getInstance().getFileManager().getChangeLogger().getEntries();
                 JsonObject response = new JsonObject();
                 response.add("entries", entries);
                 
-                sendResponse(exchange, 200, main.getGson().toJson(response));
+                sendResponse(exchange, 200, Main.getInstance().getGson().toJson(response));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error in FileChangelogHandler", e);
                 sendError(exchange, 500, "Internal server error");
             }
         }
+    }
+
+    public void setApiKey(String apiKey) {
+        this.apiKey = apiKey;
+    }
+
+    public String getApiKey() {
+        return apiKey;
+    }
+
+    public KeyPair getServerKeyPair() {
+        return serverKeyPair;
+    }
+
+    public void setServerKeyPair(KeyPair serverKeyPair) {
+        this.serverKeyPair = serverKeyPair;
     }
 }

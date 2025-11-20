@@ -1,24 +1,27 @@
-package dev.randombytes;
+package dev.mccontrol.manager;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import dev.mccontrol.Main;
 import org.bukkit.plugin.Plugin;
 
-import java.io.*;
-import java.nio.file.*;
-import java.util.*;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.util.Date;
+import java.util.List;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.logging.Level;
 
 public class LogManager {
-    private final MainR main;
     private final Plugin plugin;
     private final File logsFile;
     private final ConcurrentLinkedDeque<String> logs;
     private static final int MAX_LOGS = 5000;
     
-    public LogManager(Plugin plugin, MainR main) {
-        this.main = main;
+    public LogManager(Plugin plugin) {
         this.plugin = plugin;
         this.logsFile = new File(plugin.getDataFolder(), "combined-logs.txt");
         this.logs = new ConcurrentLinkedDeque<>();
@@ -91,9 +94,41 @@ public class LogManager {
         
         return result;
     }
-    
+
     public void clear() {
         logs.clear();
         saveLogs();
     }
+
+    public void attachConsoleLogHandler() {
+        java.util.logging.Logger rootLogger = java.util.logging.Logger.getLogger("");
+        rootLogger.addHandler(new java.util.logging.Handler() {
+            @Override
+            public void publish(java.util.logging.LogRecord record) {
+                if (Main.getInstance().getPlayerDataManager() != null) {
+                    String timestamp = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date(record.getMillis()));
+                    String threadName = record.getLoggerName().contains("Server") ? "Server thread" : Thread.currentThread().getName();
+                    String level = record.getLevel().getName();
+                    String message = record.getMessage();
+
+                    String formattedLog = String.format("[%s] [%s/%s]: %s",
+                            timestamp, threadName, level, message);
+
+                    Main.getInstance().getPlayerDataManager().addConsoleLog(formattedLog);
+                    addLog("CONSOLE: " + formattedLog);
+                }
+            }
+
+            @Override
+            public void flush() {
+
+            }
+
+            @Override
+            public void close() throws SecurityException {
+
+            }
+        })
+    ;}
+
 }
