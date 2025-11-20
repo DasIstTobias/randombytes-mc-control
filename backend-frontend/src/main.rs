@@ -492,9 +492,8 @@ async fn uuid_lookup(
     // Fetch UUID from Mojang API
     let url = format!("https://api.mojang.com/users/profiles/minecraft/{}", query.username);
     
-    // Create a client that accepts invalid certificates (for self-signed certs in cert chain)
+    // Create a client with default certificate validation
     let client = reqwest::Client::builder()
-        .danger_accept_invalid_certs(true)
         .build()
         .map_err(|e| {
             error!("Failed to build HTTP client: {}", e);
@@ -550,7 +549,6 @@ async fn get_player_head(
     let url = format!("https://crafatar.com/avatars/{}?size=24&overlay", uuid_no_dashes);
     
     let client = reqwest::Client::builder()
-        .danger_accept_invalid_certs(true)
         .build()
         .map_err(|e| {
             error!("Failed to build HTTP client: {}", e);
