@@ -1,20 +1,16 @@
-# <img src="backend-frontend/frontend/favicon.ico" alt="Timeline Logo" width="32" height="32" style="vertical-align: middle;"> RandomBytes MC Control
+# <img src="backend-frontend/frontend/favicon.ico" alt="RandomBytes Logo" width="32" height="32" style="vertical-align: middle;"> RandomBytes MC Control
 
-A secure Minecraft server management solution split into three components:
+A comprehensive, secure Minecraft server management solution with a modern web interface. Monitor, manage, and control your Minecraft server from anywhere with real-time metrics, player management, file operations, and more.
 
-1. **Plugin**: A PaperMC/Spigot plugin that provides a REST API for server control
-2. **Backend**: A Rust backend server that communicates with the plugin
-3. **Frontend**: A web-based UI for managing and monitoring your Minecraft server
+![Screenshot](img/Screenshot_20251120_175553.png)
 
-## Features
+## Overview
 
-- 🔒 **Secure**: RSA key exchange, API key authentication, and encrypted communication
-- 📊 **Real-time Metrics**: Monitor server performance (TPS, memory, CPU) with live graphs
-- 👥 **Player Management**: View all players, their playtime, inventory, and manage bans
-- 📝 **Whitelist/Blacklist**: Easily manage server access
-- 🔌 **Plugin Information**: View all installed plugins
-- 💻 **Console Access**: Execute commands and view server logs
-- 🐳 **Docker Ready**: Deploy with a single command
+The Project consists of three integrated components that work together to provide complete server management:
+
+1. **Plugin** - PaperMC/Spigot plugin providing a secure REST API
+2. **Backend** - Rust server handling communication and serving the web interface
+3. **Frontend** - Modern single-page web application for server management
 
 ## Architecture
 
@@ -30,181 +26,153 @@ A secure Minecraft server management solution split into three components:
                                                   └───────────┘
 ```
 
-## Quick Start
+## Features
 
-### 1. Install the Plugin
+### Server Monitoring
+- Real-time server metrics with live graphs (last 10 minutes)
+- TPS, memory usage, CPU usage, and player count tracking
+- Server uptime and current player statistics
+- Automatic metric collection every 2 seconds
+- Log search functionality with highlighting
+- List all installed plugins
 
-See the [plugin README](plugin/README.md) for detailed instructions.
+### Server Information
+- Detailed server configuration display
+- World information (environment, difficulty, PvP status, seed)
+- GeyserMC detection and Bedrock port display
+- Network information and game modes
 
+### Player Management
+- View all players who have joined the server
+- See online status and play time for each player
+- View player inventories
+- Search players by name or UUID
+- Kick online players
+- Ban and unban players
+- Manage operator status
+- Display player heads from Mojang API
+
+### Access Control
+- Whitelist management
+- Blacklist (ban list) management
+- Operator list management
+- Automatic UUID resolution for player names
+
+### Server Management
+- Console access with log viewing
+- Command execution directly from web interface
+- Graphical Server settings editor (server.properties)
+- Game rules editor with categorized settings
+- Server shutdown functionality
+- Combined server logs (console and chat)
+
+### File Manager
+- Browse server files and directories
+- Upload files to Server
+- Download files from server
+- Create and delete folders
+- Edit files
+- Rename files and folders
+- View images from Server
+- File sorting by name, size, or date
+- File search functionality
+- Change log tracking for all file operations
+
+### Mods
+- Create Custom crafting recipes
+
+### Chat Console
+- Send messages as Server to players
+- Execute in-game commands with slash notation
+
+## Getting Started
+
+### Prerequisites
+
+#### For the Plugin
+- Java 21 or higher
+- PaperMC or Spigot 1.21.1+
+- Maven (for building from source)
+
+#### For the Backend
+- Docker and Docker Compose
+
+### Step 1: Install and Configure the Plugin
+
+1. Build the plugin:
 ```bash
 cd plugin
 mvn clean package
-# Copy target/randombytes-mc-control-1.0.0.jar to your server's plugins folder
 ```
 
-After starting your Minecraft server, note the API key from the console output or from `plugins/randombytes-mc-control/API-KEY.txt`.
+2. Copy the JAR file into the `plugins` Directory on your Minecraft server
 
-### 2. Configure and Start the Backend
+3. Start your Minecraft server. The plugin will generate configuration files in `plugins/RandomBytesMCControl/`:
+   - `plugin.config` - Contains the API port (default: 25575)
+   - `API-KEY.txt` - Your unique API key for backend authentication
+   - `public-key.txt` - RSA public key for encrypted communication
 
-See the [backend-frontend README](backend-frontend/README.md) for detailed instructions.
+### Step 2: Configure and Start the Backend
 
+1. Navigate to the backend directory:
 ```bash
 cd backend-frontend
+```
+
+2. Create the configuration file:
+```bash
 cp backend.config.example backend.config
-# Edit backend.config with your plugin's host, port, and API key
-sudo docker compose up -d
 ```
 
-### 3. Access the Web Interface
-
-Open your browser to `http://localhost:8080` (or your server's IP address).
-
-## Project Structure
-
+3. Edit `backend.config` with your server details:
 ```
-randombytes-mc-control/
-├── plugin/                    # Minecraft plugin (Java)
-│   ├── src/
-│   ├── pom.xml
-│   └── README.md
-├── backend-frontend/          # Backend & Frontend
-│   ├── src/                   # Rust backend source
-│   ├── frontend/              # HTML/CSS/JS frontend
-│   ├── Cargo.toml
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   ├── backend.config.example
-│   └── README.md
-└── README.md                  # This file
+plugin_host=your-minecraft-server-ip
+plugin_port=25575
+api_key=your-api-key-from-plugin
+backend_port=8080
 ```
 
-## Requirements
+4. Change the Port in `docker-compose.yml` if you changed it in `backend.config`.
 
-### Plugin
-- Java 21 or higher
-- PaperMC or Spigot 1.21.1+
-- Maven (for compilation)
+5. Start the backend with Docker:
+```bash
+sudo docker compose up --build -d
+```
 
-### Backend
-- Rust 1.75+ (for manual build)
-- OR Docker & Docker Compose (recommended)
-
-### Frontend
-- Modern web browser (Chrome, Firefox, Edge, Safari)
-- No additional requirements (served by backend)
+6. View logs (optional):
+```bash
+sudo docker compose logs -f
+```
 
 ## Security
 
-This system implements multiple layers of security:
+### Security Architecture
 
-1. **API Key Authentication**: The backend must provide a valid API key
-2. **RSA Key Exchange**: Initial connection uses RSA-2048 encryption
-3. **Session Encryption**: After authentication, communication uses AES-256
-4. **No Internet Exposure Required**: Can run entirely on local network
-5. **Reverse Proxy Compatible**: Designed to work behind authentication layers
+The system implements multiple security layers:
 
-### Important Security Notes
+1. **API Key Authentication** - All backend-to-plugin communication requires a valid API key
+2. **RSA-2048 Key Exchange** - Initial connection uses public key cryptography
+3. **Reverse Proxy Compatible** - Can be placed behind authentication proxies
 
-- ⚠️ Keep your API key secure and never commit it to version control
-- ⚠️ The frontend has no built-in authentication (use a reverse proxy with auth)
-- ⚠️ Use a VPN or SSH tunnel when connecting over the internet
-- ⚠️ Consider using Authelia, OAuth2 Proxy, or similar for frontend authentication
+### Security Best Practices
 
-## Documentation
+- Deploy behind a reverse proxy with authentication (Authelia, OAuth2 Proxy, etc.)
+- Use HTTPS with valid SSL certificates for remote access
+- Connect over VPN or SSH tunnel when accessing over the internet
 
-- [Plugin Documentation](plugin/README.md)
-- [Backend & Frontend Documentation](backend-frontend/README.md)
+## Technical Information
 
-## Usage Examples
+### Stack
+- Backend: Rust (Axum web framework, Tokio async runtime)
+- Database: None (stateless, communicates directly with Minecraft server files)
+- Frontend: JavaScript, HTML, CSS (no frameworks)
+- Deployment: Docker Compose
 
-### Monitoring Server Performance
-Access the "Server Metrics" page to view real-time graphs showing:
-- TPS (Ticks Per Second)
-- Memory usage percentage
-- CPU usage percentage
-- Player count over time
-
-### Managing Players
-1. Navigate to "Players" page
-2. View all players sorted alphabetically
-3. Click "Inventory" to see a player's items (when online)
-4. Click "Ban" or "Unban" to manage player access
-
-### Executing Commands
-1. Go to "Console" page
-2. View recent server logs
-3. Type commands in the input field (without `/`)
-4. Click "Execute" to run the command
-
-### Managing Whitelist
-1. Navigate to "Whitelist" page
-2. Enter player name and UUID
-3. Click "Add to Whitelist"
-4. View current whitelist below
-
-## Troubleshooting
-
-### Plugin won't start
-- Check Java version: `java -version` (must be 21+)
-- Verify server is PaperMC or Spigot
-- Check server logs for errors
-
-### Backend can't connect to plugin
-- Verify plugin is running and port is correct
-- Check firewall allows connections on plugin port
-- Verify API key matches plugin's API-KEY.txt
-- Test connection: `curl http://plugin-host:plugin-port/api/handshake`
-
-### Frontend not loading
-- Verify backend is running: `docker compose ps`
-- Check backend logs: `docker compose logs -f`
-- Ensure port 8080 is not blocked by firewall
-
-## Development
-
-### Building from Source
-
-**Plugin:**
-```bash
-cd plugin
-mvn clean package
-```
-
-**Backend:**
-```bash
-cd backend-frontend
-cargo build --release
-```
-
-### Running Tests
-
-**Plugin:**
-```bash
-cd plugin
-mvn test
-```
-
-**Backend:**
-```bash
-cd backend-frontend
-cargo test
-```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit issues and pull requests.
+### Ports (changeable)
+- HTTP | Frontend: 8080 (default)
+- REST API | Plugin: 25575 (default)
 
 ## Licence
 
-See [LICENCE](LICENCE) file for details.
-
-## Support
-
-For issues, questions, or contributions:
-- GitHub Issues: https://github.com/DasIstTobias/randombytes-mc-control/issues
-- Documentation: See README files in subdirectories
-
-## Authors
-
-- RandomBytes
-- Contributors: See GitHub contributors page
+This software is licensed under the GNU General Public Licence Version 3.
+Refer to the LICENCE file for more information.

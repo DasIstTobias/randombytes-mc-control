@@ -111,8 +111,3 @@ Regenerate the API key by:
 3. Start the server
 4. Note the new API key from the console
 5. Update your backend configuration
-
-## Support
-
-For issues, questions, or contributions, please visit:
-https://github.com/DasIstTobias/randombytes-mc-control
