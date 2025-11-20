@@ -107,6 +107,14 @@ async fn main() {
         .route("/api/recipe/:id", axum::routing::delete(delete_recipe))
         // Logs endpoint
         .route("/api/logs", get(get_logs))
+        // File manager endpoints
+        .route("/api/files", get(list_files))
+        .route("/api/files/content", get(read_file_content))
+        .route("/api/files/content", post(write_file_content))
+        .route("/api/files", post(file_action))
+        .route("/api/files", axum::routing::delete(delete_file))
+        .route("/api/files/download", get(download_file))
+        .route("/api/files/changelog", get(get_file_changelog))
         // Serve frontend
         .nest_service("/", ServeDir::new("frontend"))
         .with_state(state.clone());
@@ -683,6 +691,210 @@ async fn get_logs(State(state): State<AppState>) -> Result<Json<serde_json::Valu
         Ok(logs) => Ok(Json(logs)),
         Err(e) => {
             error!("Failed to get logs: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+// File manager handlers
+
+#[derive(Deserialize)]
+struct FileQuery {
+    path: Option<String>,
+}
+
+async fn list_files(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<FileQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    let path = query.path.unwrap_or_default();
+    match client.list_files(&path).await {
+        Ok(files) => Ok(Json(files)),
+        Err(e) => {
+            error!("Failed to list files: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn read_file_content(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<FileQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    let path = query.path.unwrap_or_default();
+    match client.read_file(&path).await {
+        Ok(content) => Ok(Json(content)),
+        Err(e) => {
+            error!("Failed to read file: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct WriteFileRequest {
+    content: String,
+    #[serde(default)]
+    is_base64: bool,
+}
+
+async fn write_file_content(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<FileQuery>,
+    Json(payload): Json<WriteFileRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    let path = query.path.unwrap_or_default();
+    match client.write_file(&path, &payload.content, payload.is_base64).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to write file: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct FileActionRequest {
+    action: String,
+    #[serde(rename = "newName")]
+    new_name: Option<String>,
+}
+
+async fn file_action(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<FileQuery>,
+    Json(payload): Json<FileActionRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    let path = query.path.unwrap_or_default();
+    
+    match payload.action.as_str() {
+        "rename" => {
+            let new_name = payload.new_name.ok_or_else(|| ApiError::PluginError("newName required for rename action".to_string()))?;
+            match client.rename_file(&path, &new_name).await {
+                Ok(result) => Ok(Json(result)),
+                Err(e) => {
+                    error!("Failed to rename file: {}", e);
+                    Err(ApiError::PluginError(e.to_string()))
+                }
+            }
+        },
+        "mkdir" => {
+            match client.create_directory(&path).await {
+                Ok(result) => Ok(Json(result)),
+                Err(e) => {
+                    error!("Failed to create directory: {}", e);
+                    Err(ApiError::PluginError(e.to_string()))
+                }
+            }
+        },
+        _ => Err(ApiError::PluginError(format!("Unknown action: {}", payload.action)))
+    }
+}
+
+async fn delete_file(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<FileQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    let path = query.path.unwrap_or_default();
+    match client.delete_file(&path).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            error!("Failed to delete file: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn download_file(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<FileQuery>,
+) -> Result<impl IntoResponse, ApiError> {
+    let client = state.plugin_client.read().await;
+    let path = query.path.unwrap_or_default();
+    
+    match client.read_file(&path).await {
+        Ok(file_data) => {
+            // Check for errors
+            if file_data.get("error").is_some() {
+                return Err(ApiError::PluginError(
+                    file_data.get("error")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Failed to read file")
+                        .to_string()
+                ));
+            }
+            
+            // Get file content
+            let content = file_data.get("content")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ApiError::PluginError("No content in response".to_string()))?;
+            
+            let is_base64 = file_data.get("encoding")
+                .and_then(|v| v.as_str())
+                .map(|s| s == "base64")
+                .unwrap_or(false);
+            
+            // Decode content
+            let bytes = if is_base64 {
+                use base64::Engine;
+                base64::engine::general_purpose::STANDARD.decode(content)
+                    .map_err(|e| ApiError::PluginError(format!("Failed to decode base64: {}", e)))?
+            } else {
+                content.as_bytes().to_vec()
+            };
+            
+            // Determine filename from path
+            let filename = path.split('/').last().unwrap_or("download").to_string();
+            
+            // Determine content type
+            let content_type = if filename.ends_with(".txt") {
+                "text/plain"
+            } else if filename.ends_with(".json") {
+                "application/json"
+            } else if filename.ends_with(".yml") || filename.ends_with(".yaml") {
+                "text/yaml"
+            } else if filename.ends_with(".properties") {
+                "text/plain"
+            } else if filename.ends_with(".jar") {
+                "application/java-archive"
+            } else if filename.ends_with(".log") {
+                "text/plain"
+            } else {
+                "application/octet-stream"
+            };
+            
+            let content_disposition = format!("attachment; filename=\"{}\"", filename);
+            
+            Ok((
+                StatusCode::OK,
+                [
+                    (axum::http::header::CONTENT_TYPE, content_type.to_string()),
+                    (axum::http::header::CONTENT_DISPOSITION, content_disposition)
+                ],
+                bytes
+            ))
+        },
+        Err(e) => {
+            error!("Failed to download file: {}", e);
+            Err(ApiError::PluginError(e.to_string()))
+        }
+    }
+}
+
+async fn get_file_changelog(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.plugin_client.read().await;
+    
+    match client.get_file_changelog().await {
+        Ok(data) => Ok(Json(data)),
+        Err(e) => {
+            error!("Failed to get changelog: {}", e);
             Err(ApiError::PluginError(e.to_string()))
         }
     }

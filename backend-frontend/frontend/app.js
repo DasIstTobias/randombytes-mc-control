@@ -297,6 +297,9 @@ async function loadPage(page) {
                 // Auto-refresh every 2 seconds
                 pageRefreshInterval = setInterval(loadLogs, 2000);
                 break;
+            case 'file-manager':
+                await loadFileManager();
+                break;
         }
     } catch (error) {
         console.error('Error loading page:', error);
@@ -1771,6 +1774,777 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// File Manager
+let currentPath = '';
+let currentFiles = [];
+let currentSortBy = 'name';
+let currentFileSearch = '';
+let contextMenuTarget = null;
+let fileChangeLog = []; // Track all file operations
+
+function addToChangeLog(action) {
+    const now = new Date();
+    const timestamp = now.toLocaleString('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    fileChangeLog.unshift(`[${timestamp}] ${action}`);
+    // Keep only last 500 entries
+    if (fileChangeLog.length > 500) {
+        fileChangeLog = fileChangeLog.slice(0, 500);
+    }
+}
+
+async function loadFileManager() {
+    try {
+        await loadFiles(currentPath);
+        initFileManagerEventListeners();
+    } catch (error) {
+        console.error('Error loading file manager:', error);
+    }
+}
+
+async function loadFiles(path) {
+    try {
+        const data = await API.get(`/files?path=${encodeURIComponent(path || '')}`);
+        
+        if (data.error) {
+            await customAlert('Error loading files: ' + data.error);
+            return;
+        }
+        
+        currentPath = data.currentPath || '';
+        currentFiles = data.items || [];
+        
+        // Update breadcrumb
+        updateBreadcrumb(currentPath);
+        
+        // Apply filters and render
+        renderFiles();
+    } catch (error) {
+        console.error('Error loading files:', error);
+        await customAlert('Failed to load files');
+    }
+}
+
+function updateBreadcrumb(path) {
+    const breadcrumb = document.getElementById('file-breadcrumb');
+    breadcrumb.innerHTML = '';
+    
+    // Add root
+    const rootItem = document.createElement('span');
+    rootItem.className = 'breadcrumb-item';
+    rootItem.textContent = 'Root';
+    rootItem.dataset.path = '';
+    rootItem.addEventListener('click', () => loadFiles(''));
+    breadcrumb.appendChild(rootItem);
+    
+    // Add path segments
+    if (path) {
+        const segments = path.split('/').filter(s => s);
+        let currentSegmentPath = '';
+        
+        segments.forEach((segment, index) => {
+            currentSegmentPath += (currentSegmentPath ? '/' : '') + segment;
+            const segmentPath = currentSegmentPath;
+            
+            const item = document.createElement('span');
+            item.className = 'breadcrumb-item';
+            item.textContent = segment;
+            item.dataset.path = segmentPath;
+            item.addEventListener('click', () => loadFiles(segmentPath));
+            breadcrumb.appendChild(item);
+        });
+    }
+}
+
+function renderFiles() {
+    const tbody = document.getElementById('file-list-body');
+    tbody.innerHTML = '';
+    
+    // Filter files
+    let filtered = currentFiles;
+    if (currentFileSearch) {
+        const searchLower = currentFileSearch.toLowerCase();
+        filtered = currentFiles.filter(file => 
+            file.name.toLowerCase().includes(searchLower)
+        );
+    }
+    
+    // Sort files
+    filtered = sortFiles(filtered, currentSortBy);
+    
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">No files found</td></tr>';
+        return;
+    }
+    
+    filtered.forEach(file => {
+        const row = document.createElement('tr');
+        row.dataset.path = file.path;
+        row.dataset.isDirectory = file.isDirectory;
+        row.dataset.name = file.name;
+        row.dataset.editable = file.editable || false;
+        
+        // Name column with icon
+        const nameCell = document.createElement('td');
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-item';
+        
+        const icon = document.createElement('span');
+        icon.className = 'file-icon';
+        if (file.isDirectory) {
+            icon.classList.add('folder');
+        } else {
+            icon.classList.add(file.type || 'file');
+        }
+        
+        const name = document.createElement('span');
+        name.className = 'file-name';
+        if (file.isDirectory) {
+            name.classList.add('directory');
+        }
+        name.textContent = file.name;
+        
+        fileItem.appendChild(icon);
+        fileItem.appendChild(name);
+        nameCell.appendChild(fileItem);
+        
+        // Size column
+        const sizeCell = document.createElement('td');
+        sizeCell.className = 'file-size';
+        sizeCell.textContent = file.isDirectory ? '-' : formatFileSize(file.size);
+        
+        // Modified column
+        const modifiedCell = document.createElement('td');
+        modifiedCell.className = 'file-date';
+        modifiedCell.textContent = file.modified ? formatFileDate(file.modified) : '-';
+        
+        // Actions column
+        const actionsCell = document.createElement('td');
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'file-actions';
+        
+        if (!file.isDirectory) {
+            // Check if it's an image file
+            const isImage = /\.(webp|jpg|jpeg|png)$/i.test(file.name);
+            
+            // 1. Edit button (for editable files)
+            if (file.editable) {
+                const editBtn = document.createElement('button');
+                editBtn.textContent = 'Edit';
+                editBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    openFileEditor(file.path, file.name);
+                };
+                actionsDiv.appendChild(editBtn);
+            }
+            
+            // 2. Open Picture button (for image files)
+            if (isImage) {
+                const openPictureBtn = document.createElement('button');
+                openPictureBtn.textContent = 'Open Picture';
+                openPictureBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    openImageViewer(file.path);
+                };
+                actionsDiv.appendChild(openPictureBtn);
+            }
+            
+            // 3. Download button
+            const downloadBtn = document.createElement('button');
+            downloadBtn.className = 'download-btn';
+            downloadBtn.textContent = 'Download';
+            downloadBtn.onclick = (e) => {
+                e.stopPropagation();
+                downloadFile(file.path);
+            };
+            actionsDiv.appendChild(downloadBtn);
+        }
+        
+        // 4. Delete button (for both files and directories)
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'danger';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation();
+            deleteFileOrFolder(file.path, file.name, file.isDirectory);
+        };
+        actionsDiv.appendChild(deleteBtn);
+        
+        actionsCell.appendChild(actionsDiv);
+        
+        row.appendChild(nameCell);
+        row.appendChild(sizeCell);
+        row.appendChild(modifiedCell);
+        row.appendChild(actionsCell);
+        
+        // Double-click handler
+        row.addEventListener('dblclick', () => {
+            if (file.isDirectory) {
+                loadFiles(file.path);
+            } else {
+                // Check if it's an image
+                const isImage = /\.(webp|jpg|jpeg|png)$/i.test(file.name);
+                if (isImage) {
+                    openImageViewer(file.path);
+                } else if (file.editable) {
+                    openFileEditor(file.path, file.name);
+                }
+            }
+        });
+        
+        // Right-click context menu
+        row.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            showContextMenu(e, row);
+        });
+        
+        tbody.appendChild(row);
+    });
+}
+
+function sortFiles(files, sortBy) {
+    const sorted = [...files];
+    
+    // Always put directories first
+    sorted.sort((a, b) => {
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+        
+        switch (sortBy) {
+            case 'name':
+                return a.name.localeCompare(b.name);
+            case 'size':
+                return (b.size || 0) - (a.size || 0);
+            case 'date':
+                return (b.modified || 0) - (a.modified || 0);
+            default:
+                return 0;
+        }
+    });
+    
+    return sorted;
+}
+
+function formatFileSize(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+function formatFileDate(timestamp) {
+    const date = new Date(timestamp);
+    return date.toLocaleString('en-GB', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+async function downloadFile(path) {
+    try {
+        window.location.href = `/api/files/download?path=${encodeURIComponent(path)}`;
+    } catch (error) {
+        console.error('Error downloading file:', error);
+        await customAlert('Failed to download file');
+    }
+}
+
+async function openFileEditor(path, name) {
+    try {
+        const data = await API.get(`/files/content?path=${encodeURIComponent(path)}`);
+        
+        if (data.error) {
+            await customAlert('Error loading file: ' + data.error);
+            return;
+        }
+        
+        document.getElementById('file-editor-title').textContent = `Edit: ${name}`;
+        const textarea = document.getElementById('file-editor-textarea');
+        textarea.value = data.content || '';
+        document.getElementById('file-editor-modal').classList.add('active');
+        
+        // Store path for saving
+        textarea.dataset.path = path;
+        
+        // Update line numbers
+        updateLineNumbers();
+        
+        // Update line numbers on scroll and input
+        textarea.addEventListener('scroll', syncScroll);
+        textarea.addEventListener('input', updateLineNumbers);
+    } catch (error) {
+        console.error('Error loading file for editing:', error);
+        await customAlert('Failed to load file');
+    }
+}
+
+function updateLineNumbers() {
+    const textarea = document.getElementById('file-editor-textarea');
+    const lineNumbers = document.getElementById('file-editor-line-numbers');
+    const lines = textarea.value.split('\n').length;
+    
+    let html = '';
+    for (let i = 1; i <= lines; i++) {
+        html += `<div>${i}</div>`;
+    }
+    lineNumbers.innerHTML = html;
+    
+    // Sync scroll position
+    syncScroll();
+}
+
+function syncScroll() {
+    const textarea = document.getElementById('file-editor-textarea');
+    const lineNumbers = document.getElementById('file-editor-line-numbers');
+    lineNumbers.scrollTop = textarea.scrollTop;
+}
+
+async function saveFileFromEditor() {
+    const textarea = document.getElementById('file-editor-textarea');
+    const path = textarea.dataset.path;
+    const content = textarea.value;
+    
+    try {
+        const data = await API.post(`/files/content?path=${encodeURIComponent(path)}`, {
+            content: content,
+            is_base64: false
+        });
+        
+        if (data.error) {
+            await customAlert('Error saving file: ' + data.error);
+            return;
+        }
+        
+        addToChangeLog(`Edit /${path}`);
+        await customAlert('File saved successfully');
+        document.getElementById('file-editor-modal').classList.remove('active');
+        await loadFiles(currentPath);
+    } catch (error) {
+        console.error('Error saving file:', error);
+        await customAlert('Failed to save file');
+    }
+}
+
+async function deleteFileOrFolder(path, name, isDirectory) {
+    const type = isDirectory ? 'folder' : 'file';
+    
+    if (isDirectory) {
+        // For directories, require typing the folder name
+        const confirmName = await customPrompt(`To delete this folder, please type its name to confirm: "${name}"`, '');
+        
+        if (confirmName !== name) {
+            if (confirmName !== null) {
+                await customAlert('Folder name did not match. Deletion cancelled.');
+            }
+            return;
+        }
+    } else {
+        // For files, simple confirmation
+        const confirmed = await customConfirm(`Are you sure you want to delete this ${type}? ${name}`);
+        
+        if (!confirmed) return;
+    }
+    
+    try {
+        const data = await API.delete(`/files?path=${encodeURIComponent(path)}`);
+        
+        if (data.error) {
+            await customAlert('Error deleting ' + type + ': ' + data.error);
+            return;
+        }
+        
+        addToChangeLog(`Delete /${path}`);
+        await loadFiles(currentPath);
+    } catch (error) {
+        console.error('Error deleting ' + type + ':', error);
+        await customAlert('Failed to delete ' + type);
+    }
+}
+
+async function renameFileOrFolder(path, oldName) {
+    const newName = await customPrompt('Enter new name:', oldName);
+    
+    if (!newName || newName === oldName) return;
+    
+    try {
+        const data = await API.post(`/files?path=${encodeURIComponent(path)}`, {
+            action: 'rename',
+            newName: newName
+        });
+        
+        if (data.error) {
+            await customAlert('Error renaming: ' + data.error);
+            return;
+        }
+        
+        addToChangeLog(`Rename /${path} to ${newName}`);
+        await loadFiles(currentPath);
+    } catch (error) {
+        console.error('Error renaming:', error);
+        await customAlert('Failed to rename');
+    }
+}
+
+async function createFolder() {
+    const folderName = await customPrompt('Enter folder name:', '');
+    
+    if (!folderName) return;
+    
+    const folderPath = currentPath ? `${currentPath}/${folderName}` : folderName;
+    
+    try {
+        const data = await API.post(`/files?path=${encodeURIComponent(folderPath)}`, {
+            action: 'mkdir'
+        });
+        
+        if (data.error) {
+            await customAlert('Error creating folder: ' + data.error);
+            return;
+        }
+        
+        addToChangeLog(`Create folder /${folderPath}`);
+        await loadFiles(currentPath);
+    } catch (error) {
+        console.error('Error creating folder:', error);
+        await customAlert('Failed to create folder');
+    }
+}
+
+async function uploadFiles(files) {
+    for (const file of files) {
+        try {
+            const reader = new FileReader();
+            
+            reader.onload = async (e) => {
+                const content = e.target.result.split(',')[1]; // Get base64 content
+                const filePath = currentPath ? `${currentPath}/${file.name}` : file.name;
+                
+                try {
+                    const data = await API.post(`/files/content?path=${encodeURIComponent(filePath)}`, {
+                        content: content,
+                        is_base64: true
+                    });
+                    
+                    if (data.error) {
+                        await customAlert(`Error uploading ${file.name}: ${data.error}`);
+                    } else {
+                        addToChangeLog(`Upload /${filePath}`);
+                    }
+                } catch (error) {
+                    console.error('Error uploading file:', error);
+                    await customAlert(`Failed to upload ${file.name}`);
+                }
+            };
+            
+            reader.readAsDataURL(file);
+        } catch (error) {
+            console.error('Error reading file:', error);
+        }
+    }
+    
+    // Refresh after a short delay to allow uploads to complete
+    setTimeout(() => loadFiles(currentPath), 1000);
+}
+
+function openImageViewer(path) {
+    const img = document.getElementById('image-viewer-img');
+    img.src = `/api/files/download?path=${encodeURIComponent(path)}`;
+    document.getElementById('image-viewer-modal').classList.add('active');
+    addToChangeLog(`View image /${path}`);
+}
+
+function showChangeLog() {
+    const output = document.getElementById('changelog-output');
+    output.innerHTML = '<div class="changelog-line">Loading...</div>';
+    
+    // Fetch from backend
+    API.get('/files/changelog').then(data => {
+        output.innerHTML = '';
+        
+        const entries = data.entries || [];
+        if (entries.length === 0) {
+            output.innerHTML = '<div class="changelog-line">No actions recorded yet</div>';
+        } else {
+            entries.forEach(entry => {
+                const lineDiv = document.createElement('div');
+                lineDiv.className = 'changelog-line';
+                lineDiv.textContent = entry;
+                output.appendChild(lineDiv);
+            });
+        }
+    }).catch(error => {
+        console.error('Error loading changelog:', error);
+        output.innerHTML = '<div class="changelog-line">Failed to load changelog</div>';
+    });
+    
+    document.getElementById('changelog-modal').classList.add('active');
+}
+
+function showContextMenu(event, row) {
+    const menu = document.getElementById('file-context-menu');
+    contextMenuTarget = row;
+    
+    const isDirectory = row.dataset.isDirectory === 'true';
+    const isEditable = row.dataset.editable === 'true';
+    const fileName = row.dataset.name;
+    const isImage = /\.(webp|jpg|jpeg|png)$/i.test(fileName);
+    
+    // Show/hide edit option
+    const editOption = document.getElementById('context-edit');
+    if (isDirectory || !isEditable) {
+        editOption.style.display = 'none';
+    } else {
+        editOption.style.display = 'block';
+    }
+    
+    // Show/hide open picture option
+    const openPictureOption = document.getElementById('context-open-picture');
+    if (isDirectory || !isImage) {
+        openPictureOption.style.display = 'none';
+    } else {
+        openPictureOption.style.display = 'block';
+    }
+    
+    // Show/hide download option
+    const downloadOption = document.getElementById('context-download');
+    if (isDirectory) {
+        downloadOption.style.display = 'none';
+    } else {
+        downloadOption.style.display = 'block';
+    }
+    
+    menu.style.display = 'block';
+    
+    // Position the menu at the click location
+    // Adjust if it would go off screen
+    const menuWidth = 150;
+    const menuHeight = 200; // approximate
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    
+    let x = event.clientX;
+    let y = event.clientY;
+    
+    if (x + menuWidth > viewportWidth) {
+        x = viewportWidth - menuWidth - 10;
+    }
+    
+    if (y + menuHeight > viewportHeight) {
+        y = viewportHeight - menuHeight - 10;
+    }
+    
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+}
+
+function hideContextMenu() {
+    document.getElementById('file-context-menu').style.display = 'none';
+    contextMenuTarget = null;
+}
+
+function initFileManagerEventListeners() {
+    // Refresh button
+    const refreshBtn = document.getElementById('file-refresh-btn');
+    if (refreshBtn && !refreshBtn.dataset.listenerAdded) {
+        refreshBtn.addEventListener('click', () => loadFiles(currentPath));
+        refreshBtn.dataset.listenerAdded = 'true';
+    }
+    
+    // Change-Log button
+    const changelogBtn = document.getElementById('file-changelog-btn');
+    if (changelogBtn && !changelogBtn.dataset.listenerAdded) {
+        changelogBtn.addEventListener('click', showChangeLog);
+        changelogBtn.dataset.listenerAdded = 'true';
+    }
+    
+    // Create folder button
+    const createFolderBtn = document.getElementById('create-folder-btn');
+    if (createFolderBtn && !createFolderBtn.dataset.listenerAdded) {
+        createFolderBtn.addEventListener('click', createFolder);
+        createFolderBtn.dataset.listenerAdded = 'true';
+    }
+    
+    // Upload file button
+    const uploadBtn = document.getElementById('upload-file-btn');
+    const uploadInput = document.getElementById('file-upload-input');
+    if (uploadBtn && !uploadBtn.dataset.listenerAdded) {
+        uploadBtn.addEventListener('click', () => uploadInput.click());
+        uploadBtn.dataset.listenerAdded = 'true';
+    }
+    
+    if (uploadInput && !uploadInput.dataset.listenerAdded) {
+        uploadInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                uploadFiles(Array.from(e.target.files));
+                e.target.value = ''; // Reset input
+            }
+        });
+        uploadInput.dataset.listenerAdded = 'true';
+    }
+    
+    // Search
+    const searchInput = document.getElementById('file-search');
+    if (searchInput && !searchInput.dataset.listenerAdded) {
+        searchInput.addEventListener('input', (e) => {
+            currentFileSearch = e.target.value.toLowerCase().trim();
+            renderFiles();
+        });
+        searchInput.dataset.listenerAdded = 'true';
+    }
+    
+    // Sort
+    const sortSelect = document.getElementById('file-sort');
+    if (sortSelect && !sortSelect.dataset.listenerAdded) {
+        sortSelect.addEventListener('change', (e) => {
+            currentSortBy = e.target.value;
+            renderFiles();
+        });
+        sortSelect.dataset.listenerAdded = 'true';
+    }
+    
+    // File editor close
+    const editorClose = document.getElementById('file-editor-close');
+    if (editorClose && !editorClose.dataset.listenerAdded) {
+        editorClose.addEventListener('click', () => {
+            document.getElementById('file-editor-modal').classList.remove('active');
+        });
+        editorClose.dataset.listenerAdded = 'true';
+    }
+    
+    // File editor save
+    const editorSave = document.getElementById('file-editor-save');
+    if (editorSave && !editorSave.dataset.listenerAdded) {
+        editorSave.addEventListener('click', saveFileFromEditor);
+        editorSave.dataset.listenerAdded = 'true';
+    }
+    
+    // File editor cancel
+    const editorCancel = document.getElementById('file-editor-cancel');
+    if (editorCancel && !editorCancel.dataset.listenerAdded) {
+        editorCancel.addEventListener('click', () => {
+            document.getElementById('file-editor-modal').classList.remove('active');
+        });
+        editorCancel.dataset.listenerAdded = 'true';
+    }
+    
+    // Context menu actions
+    const contextDownload = document.getElementById('context-download');
+    if (contextDownload && !contextDownload.dataset.listenerAdded) {
+        contextDownload.addEventListener('click', () => {
+            if (contextMenuTarget) {
+                downloadFile(contextMenuTarget.dataset.path);
+                hideContextMenu();
+            }
+        });
+        contextDownload.dataset.listenerAdded = 'true';
+    }
+    
+    const contextEdit = document.getElementById('context-edit');
+    if (contextEdit && !contextEdit.dataset.listenerAdded) {
+        contextEdit.addEventListener('click', () => {
+            if (contextMenuTarget) {
+                openFileEditor(contextMenuTarget.dataset.path, contextMenuTarget.dataset.name);
+                hideContextMenu();
+            }
+        });
+        contextEdit.dataset.listenerAdded = 'true';
+    }
+    
+    const contextOpenPicture = document.getElementById('context-open-picture');
+    if (contextOpenPicture && !contextOpenPicture.dataset.listenerAdded) {
+        contextOpenPicture.addEventListener('click', () => {
+            if (contextMenuTarget) {
+                openImageViewer(contextMenuTarget.dataset.path);
+                hideContextMenu();
+            }
+        });
+        contextOpenPicture.dataset.listenerAdded = 'true';
+    }
+    
+    const contextRename = document.getElementById('context-rename');
+    if (contextRename && !contextRename.dataset.listenerAdded) {
+        contextRename.addEventListener('click', () => {
+            if (contextMenuTarget) {
+                renameFileOrFolder(contextMenuTarget.dataset.path, contextMenuTarget.dataset.name);
+                hideContextMenu();
+            }
+        });
+        contextRename.dataset.listenerAdded = 'true';
+    }
+    
+    const contextDelete = document.getElementById('context-delete');
+    if (contextDelete && !contextDelete.dataset.listenerAdded) {
+        contextDelete.addEventListener('click', () => {
+            if (contextMenuTarget) {
+                const isDirectory = contextMenuTarget.dataset.isDirectory === 'true';
+                deleteFileOrFolder(contextMenuTarget.dataset.path, contextMenuTarget.dataset.name, isDirectory);
+                hideContextMenu();
+            }
+        });
+        contextDelete.dataset.listenerAdded = 'true';
+    }
+    
+    // Hide context menu on click elsewhere
+    document.addEventListener('click', () => {
+        hideContextMenu();
+    });
+    
+    // Image viewer close
+    const imageViewerClose = document.getElementById('image-viewer-close');
+    if (imageViewerClose && !imageViewerClose.dataset.listenerAdded) {
+        imageViewerClose.addEventListener('click', () => {
+            document.getElementById('image-viewer-modal').classList.remove('active');
+        });
+        imageViewerClose.dataset.listenerAdded = 'true';
+    }
+    
+    // Changelog close
+    const changelogClose = document.getElementById('changelog-close');
+    if (changelogClose && !changelogClose.dataset.listenerAdded) {
+        changelogClose.addEventListener('click', () => {
+            document.getElementById('changelog-modal').classList.remove('active');
+        });
+        changelogClose.dataset.listenerAdded = 'true';
+    }
+    
+    // Drag and drop
+    const dropOverlay = document.getElementById('file-drop-overlay');
+    const fileManagerPage = document.getElementById('file-manager-page');
+    
+    if (fileManagerPage && !fileManagerPage.dataset.dragListenerAdded) {
+        fileManagerPage.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropOverlay.style.display = 'flex';
+        });
+        
+        fileManagerPage.addEventListener('dragleave', (e) => {
+            if (e.target === fileManagerPage) {
+                dropOverlay.style.display = 'none';
+            }
+        });
+        
+        fileManagerPage.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropOverlay.style.display = 'none';
+            
+            if (e.dataTransfer.files.length > 0) {
+                uploadFiles(Array.from(e.dataTransfer.files));
+            }
+        });
+        
+        fileManagerPage.dataset.dragListenerAdded = 'true';
+    }
+}
 
 // Initialize
 loadPage('status');
