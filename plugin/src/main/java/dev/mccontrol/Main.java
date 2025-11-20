@@ -36,13 +36,9 @@ public class Main extends JavaPlugin {
         mainR = new MainR(this);
         mainT = new MainT(this);
         gson = new GsonBuilder().setPrettyPrinting().create();
-        metricsCollector = new MetricsCollector( this);
-        playerDataManager = new PlayerDataManager(this);
-        customRecipeManager = new CustomRecipeManager(this);
-        logManager = new LogManager(this);
-        fileManager = new FileManager(this);
 
-        if (getDataFolder().exists()) {
+
+        if (!getDataFolder().exists()) {
             getDataFolder().mkdirs();
         }
 
@@ -50,10 +46,19 @@ public class Main extends JavaPlugin {
 
         mainR.onEnable();
         mainT.onEnable();
-        configManager.load();
+
+        configManager.loadConfig();
+        apiServer = new APIServer(this, configManager.getPluginPort());
+        configManager.loadOrGenerateApiKey();
+        configManager.generateKeyPair();
+        metricsCollector = new MetricsCollector( this);
+        playerDataManager = new PlayerDataManager(this);
+        customRecipeManager = new CustomRecipeManager(this);
+        logManager = new LogManager(this);
+        fileManager = new FileManager(this);
+
         logManager.attachConsoleLogHandler();
 
-        apiServer = new APIServer(this, configManager.getPluginPort());
         apiServer.start();
     }
     @Override

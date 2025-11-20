@@ -20,23 +20,14 @@ public class ConfigManager {
     private int pluginPort;
     private final Plugin plugin;
     File pluginConfig;
-    File apiKeyFile;
-
 
     public ConfigManager(Plugin plugin) {
         this.plugin = plugin;
         pluginConfig = new File(plugin.getDataFolder(), "plugin.config");
-        File apiKeyFile = new File(plugin.getDataFolder(), "API-KEY.txt");
-    }
 
-    public void load(){
-        loadConfig();
-        loadOrGenerateApiKey();
-        generateKeyPair();
     }
 
     public void loadConfig(){
-
         if(!pluginConfig.exists()){
             Properties props = new Properties();
             props.setProperty("port", "25575");
@@ -64,8 +55,8 @@ public class ConfigManager {
 
 
     public void loadOrGenerateApiKey(){
+        File apiKeyFile = new File(plugin.getDataFolder(), "API-KEY.txt");
         if (!apiKeyFile.exists()) {
-            // Generate new API key
             Main.getInstance().getApiServer().setApiKey( UUID.randomUUID().toString() + "-" + UUID.randomUUID().toString());
 
             try {
@@ -95,7 +86,7 @@ public class ConfigManager {
         }
     }
 
-    private void generateKeyPair() {
+    public void generateKeyPair() {
         try {
             KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
             keyGen.initialize(2048);
@@ -116,14 +107,6 @@ public class ConfigManager {
 
     public int getPluginPort() {
         return pluginPort;
-    }
-
-    public File getApiKeyFile() {
-        return apiKeyFile;
-    }
-
-    public File getPluginConfig() {
-        return pluginConfig;
     }
 
 

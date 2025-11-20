@@ -1,113 +1,178 @@
-# RandomBytes MC Control Plugin
+# <img src="backend-frontend/frontend/favicon.ico" alt="RandomBytes Logo" width="32" height="32" style="vertical-align: middle;"> RandomBytes MC Control
 
-A secure Minecraft PaperMC/Spigot plugin that provides a REST API for server management and monitoring.
+A comprehensive, secure Minecraft server management solution with a modern web interface. Monitor, manage, and control your Minecraft server from anywhere with real-time metrics, player management, file operations, and more.
+
+![Screenshot](img/Screenshot_20251120_175553.png)
+
+## Overview
+
+The Project consists of three integrated components that work together to provide complete server management:
+
+1. **Plugin** - PaperMC/Spigot plugin providing a secure REST API
+2. **Backend** - Rust server handling communication and serving the web interface
+3. **Frontend** - Modern single-page web application for server management
+
+## Architecture
+
+```
+┌─────────────┐         ┌──────────────┐         ┌───────────┐
+│  Frontend   │ ←─────→ │   Backend    │ ←─────→ │  Plugin   │
+│  (Browser)  │   HTTP  │    (Rust)    │   API   │  (Java)   │
+└─────────────┘         └──────────────┘         └───────────┘
+                                                        ↓
+                                                  ┌───────────┐
+                                                  │ Minecraft │
+                                                  │  Server   │
+                                                  └───────────┘
+```
 
 ## Features
 
-- Secure REST API with RSA key exchange and API key authentication
-- Real-time server metrics collection (TPS, memory, CPU usage)
-- Player management (list, ban, kick, inventory viewing)
-- Whitelist and blacklist management
-- Server information and plugin listing
-- Console log access and command execution
-- Encrypted communication between plugin and backend
+### Server Monitoring
+- Real-time server metrics with live graphs (last 10 minutes)
+- TPS, memory usage, CPU usage, and player count tracking
+- Server uptime and current player statistics
+- Automatic metric collection every 2 seconds
+- Log search functionality with highlighting
+- List all installed plugins
 
-## Requirements
+### Server Information
+- Detailed server configuration display
+- World information (environment, difficulty, PvP status, seed)
+- GeyserMC detection and Bedrock port display
+- Network information and game modes
 
+### Player Management
+- View all players who have joined the server
+- See online status and play time for each player
+- View player inventories
+- Search players by name or UUID
+- Kick online players
+- Ban and unban players
+- Manage operator status
+- Display player heads from Mojang API
+
+### Access Control
+- Whitelist management
+- Blacklist (ban list) management
+- Operator list management
+- Automatic UUID resolution for player names
+
+### Server Management
+- Console access with log viewing
+- Command execution directly from web interface
+- Graphical Server settings editor (server.properties)
+- Game rules editor with categorized settings
+- Server shutdown functionality
+- Combined server logs (console and chat)
+
+### File Manager
+- Browse server files and directories
+- Upload files to Server
+- Download files from server
+- Create and delete folders
+- Edit files
+- Rename files and folders
+- View images from Server
+- File sorting by name, size, or date
+- File search functionality
+- Change log tracking for all file operations
+
+### Mods
+- Create Custom crafting recipes
+
+### Chat Console
+- Send messages as Server to players
+- Execute in-game commands with slash notation
+
+## Getting Started
+
+### Prerequisites
+
+#### For the Plugin
 - Java 21 or higher
-- PaperMC or Spigot server version 1.21.1+
-- Maven (for compilation)
+- PaperMC or Spigot 1.21.1+
+- Maven (for building from source)
 
-## Compilation
+#### For the Backend
+- Docker and Docker Compose
 
-To compile the plugin into a JAR file:
+### Step 1: Install and Configure the Plugin
 
+1. Build the plugin:
 ```bash
 cd plugin
 mvn clean package
 ```
 
-The compiled JAR file will be located at `target/randombytes-mc-control-1.0.0.jar`.
+2. Copy the JAR file into the `plugins` Directory on your Minecraft server
 
-## Installation
+3. Start your Minecraft server. The plugin will generate configuration files in `plugins/RandomBytesMCControl/`:
+    - `plugin.config` - Contains the API port (default: 25575)
+    - `API-KEY.txt` - Your unique API key for backend authentication
+    - `public-key.txt` - RSA public key for encrypted communication
 
-1. Compile the plugin (see above) or download the pre-compiled JAR
-2. Copy `randombytes-mc-control-1.0.0.jar` to your server's `plugins` directory
-3. Start or restart your Minecraft server
-4. The plugin will automatically create a configuration directory at `plugins/randombytes-mc-control/`
+### Step 2: Configure and Start the Backend
 
-## Configuration
-
-After first startup, the plugin creates the following files in `plugins/randombytes-mc-control/`:
-
-### plugin.config
-Contains the port number for the API server:
-```
-port=25575
+1. Navigate to the backend directory:
+```bash
+cd backend-frontend
 ```
 
-You can change this port if needed. Default is 25575.
-
-### API-KEY.txt
-Contains the generated API key for backend authentication. This key is automatically generated on first run.
-
-**IMPORTANT:** Keep this key secure! You will need it to configure the backend.
-
-The API key will be displayed in the console on first startup:
-```
-===========================================
-NEW API KEY GENERATED!
-API Key: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-Save this key securely for backend configuration!
-===========================================
+2. Create the configuration file:
+```bash
+cp backend.config.example backend.config
 ```
 
-### public-key.txt
-Contains the RSA public key used for initial key exchange with the backend. This is automatically generated and used for secure communication setup.
+3. Edit `backend.config` with your server details:
+```
+plugin_host=your-minecraft-server-ip
+plugin_port=25575
+api_key=your-api-key-from-plugin
+backend_port=8080
+```
 
-## API Endpoints
+4. Change the Port in `docker-compose.yml` if you changed it in `backend.config`.
 
-The plugin exposes the following REST API endpoints:
+5. Start the backend with Docker:
+```bash
+sudo docker compose up --build -d
+```
 
-- `GET /api/handshake` - Get server's public key for secure connection setup
-- `POST /api/auth` - Authenticate and establish encrypted session
-- `GET /api/metrics` - Get server metrics (TPS, memory, CPU, player count)
-- `GET /api/players` - Get list of all players
-- `GET /api/player?uuid=<uuid>` - Get specific player data
-- `POST /api/player?uuid=<uuid>` - Perform action on player (ban, unban, kick)
-- `GET /api/whitelist` - Get whitelist
-- `POST /api/whitelist` - Add player to whitelist
-- `GET /api/blacklist` - Get blacklist (ban list)
-- `POST /api/blacklist` - Add player to blacklist
-- `GET /api/plugins` - Get list of installed plugins
-- `GET /api/server` - Get server information
-- `GET /api/console` - Get console logs
-- `POST /api/command` - Execute server command
-
-All endpoints except `/api/handshake` require authentication via the `Authorization: Bearer <API_KEY>` header.
+6. View logs (optional):
+```bash
+sudo docker compose logs -f
+```
 
 ## Security
 
-The plugin implements several security measures:
+### Security Architecture
 
-1. **API Key Authentication**: All requests must include a valid API key
-2. **RSA Key Exchange**: Initial connection uses RSA-2048 encryption for key exchange
-3. **Session Encryption**: After authentication, communication uses AES-256 encryption
-4. **File Permissions**: API key file is set to be readable only by the server owner
-5. **No Plain-Text Secrets**: API keys and session keys are never transmitted unencrypted
+The system implements multiple security layers:
 
-## Troubleshooting
+1. **API Key Authentication** - All backend-to-plugin communication requires a valid API key
+2. **RSA-2048 Key Exchange** - Initial connection uses public key cryptography
+3. **Reverse Proxy Compatible** - Can be placed behind authentication proxies
 
-### Port Already in Use
-If you see an error about the port being in use, change the port number in `plugin.config` and restart the server.
+### Security Best Practices
 
-### Connection Refused
-Make sure your server's firewall allows incoming connections on the configured port.
+- Deploy behind a reverse proxy with authentication (Authelia, OAuth2 Proxy, etc.)
+- Use HTTPS with valid SSL certificates for remote access
+- Connect over VPN or SSH tunnel when accessing over the internet
 
-### API Key Not Working
-Regenerate the API key by:
-1. Stop the server
-2. Delete `plugins/randombytes-mc-control/API-KEY.txt`
-3. Start the server
-4. Note the new API key from the console
-5. Update your backend configuration
+## Technical Information
+
+### Stack
+- Backend: Rust (Axum web framework, Tokio async runtime)
+- Database: None (stateless, communicates directly with Minecraft server files)
+- Frontend: JavaScript, HTML, CSS (no frameworks)
+- Deployment: Docker Compose
+
+### Ports (changeable)
+- HTTP | Frontend: 8080 (default)
+- REST API | Plugin: 25575 (default)
+
+## Licence
+
+This software is licensed under the GNU General Public Licence Version 3.
+Refer to the LICENCE file for more information.
