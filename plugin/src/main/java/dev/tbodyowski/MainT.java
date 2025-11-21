@@ -11,10 +11,10 @@ public class MainT {
     }
 
     public void onEnable(){
-
+    //Write onEnable logic here
     }
 
     public void onDisable(){
-
+        //Write onDisable logic here
     }
 }
