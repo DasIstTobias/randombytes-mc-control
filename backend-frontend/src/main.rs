@@ -9,6 +9,7 @@ use serde::Deserialize;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::sync::RwLock;
 use tower_http::services::ServeDir;
+use tower_http::limit::RequestBodyLimitLayer;
 use tracing::{error, info};
 
 mod config;
@@ -117,6 +118,7 @@ async fn main() {
         .route("/api/files/changelog", get(get_file_changelog))
         // Serve frontend
         .nest_service("/", ServeDir::new("frontend"))
+        .layer(RequestBodyLimitLayer::new(100 * 1024 * 1024)) // 100 MB limit
         .with_state(state.clone());
 
     // Start server
